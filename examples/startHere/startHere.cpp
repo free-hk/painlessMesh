@@ -20,7 +20,7 @@
 #define   BLINK_PERIOD    3000 // milliseconds until cycle repeat
 #define   BLINK_DURATION  200  // milliseconds LED is on for
 
-#define   MESH_SSID       "whateverYouLike"
+#define   MESH_SSID       "FreeHK"
 #define   MESH_PASSWORD   "somethingSneaky"
 #define   MESH_PORT       5555
 
