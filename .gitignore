@@ -12,3 +12,4 @@ Makefile
 bin/
 cmake_install.cmake
 compile_commands.json
+.DS_Store
