@@ -12,3 +12,6 @@ Makefile
 bin/
 cmake_install.cmake
 compile_commands.json
+.DS_Store
+/examples/startHere/.pio
+/examples/startHere/.vscode/c_cpp_properties.json

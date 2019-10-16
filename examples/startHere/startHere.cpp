@@ -8,16 +8,19 @@
 //
 //
 //************************************************************
+#include <Arduino.h>
 #include <painlessMesh.h>
+
+// https://gitlab.com/painlessMesh/painlessMesh
 
 // some gpio pin that is connected to an LED...
 // on my rig, this is 5, change to the right number of your LED.
 #define   LED             2       // GPIO number of connected LED, ON ESP-12 IS GPIO2
 
 #define   BLINK_PERIOD    3000 // milliseconds until cycle repeat
-#define   BLINK_DURATION  100  // milliseconds LED is on for
+#define   BLINK_DURATION  200  // milliseconds LED is on for
 
-#define   MESH_SSID       "whateverYouLike"
+#define   MESH_SSID       "FreeHK"
 #define   MESH_PASSWORD   "somethingSneaky"
 #define   MESH_PORT       5555
 
@@ -89,10 +92,26 @@ void loop() {
 }
 
 void sendMessage() {
-  String msg = "Hello from node ";
-  msg += mesh.getNodeId();
-  msg += " myFreeMemory: " + String(ESP.getFreeHeap());
-  mesh.sendBroadcast(msg);
+  #if ARDUINOJSON_VERSION_MAJOR==6
+        DynamicJsonDocument jsonBuffer(1024);
+        JsonObject msg = jsonBuffer.to<JsonObject>();
+  #else
+          DynamicJsonBuffer jsonBuffer;
+          JsonObject& msg = jsonBuffer.createObject();
+  #endif
+  msg["free_memory"] = String(ESP.getFreeHeap());
+  msg["nodeId"] = mesh.getNodeId();
+
+  String str;
+  #if ARDUINOJSON_VERSION_MAJOR==6
+      serializeJson(msg, str);
+  #else
+      msg.printTo(str);
+  #endif
+  mesh.sendBroadcast(str);
+
+  String node_id = "";
+  node_id += mesh.getNodeId();
 
   if (calc_delay) {
     SimpleList<uint32_t>::iterator node = nodes.begin();
@@ -103,14 +122,14 @@ void sendMessage() {
     calc_delay = false;
   }
 
-  Serial.printf("Sending message: %s\n", msg.c_str());
+  Serial.printf("Sending: [%s] heartbeat - Free Memory %s\n", node_id.c_str(), String(ESP.getFreeHeap()).c_str());
   
   taskSendMessage.setInterval( random(TASK_SECOND * 1, TASK_SECOND * 5));  // between 1 and 5 seconds
 }
 
 
 void receivedCallback(uint32_t from, String & msg) {
-  Serial.printf("startHere: Received from %u msg=%s\n", from, msg.c_str());
+  Serial.printf("Receive: [%u] msg= #### %s  ####\n", from, msg.c_str());
 }
 
 void newConnectionCallback(uint32_t nodeId) {
