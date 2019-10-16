@@ -92,10 +92,23 @@ void loop() {
 }
 
 void sendMessage() {
-  String msg = "Hello from node ";
-  msg += mesh.getNodeId();
-  msg += " myFreeMemory: " + String(ESP.getFreeHeap());
-  mesh.sendBroadcast(msg);
+  #if ARDUINOJSON_VERSION_MAJOR==6
+        DynamicJsonDocument jsonBuffer(1024);
+        JsonObject msg = jsonBuffer.to<JsonObject>();
+  #else
+          DynamicJsonBuffer jsonBuffer;
+          JsonObject& msg = jsonBuffer.createObject();
+  #endif
+  msg["free_memory"] = String(ESP.getFreeHeap());
+  msg["nodeId"] = mesh.getNodeId();
+
+  String str;
+  #if ARDUINOJSON_VERSION_MAJOR==6
+      serializeJson(msg, str);
+  #else
+      msg.printTo(str);
+  #endif
+  mesh.sendBroadcast(str);
 
   String node_id = "";
   node_id += mesh.getNodeId();
