@@ -97,6 +97,9 @@ void sendMessage() {
   msg += " myFreeMemory: " + String(ESP.getFreeHeap());
   mesh.sendBroadcast(msg);
 
+  String node_id = "";
+  node_id += mesh.getNodeId();
+
   if (calc_delay) {
     SimpleList<uint32_t>::iterator node = nodes.begin();
     while (node != nodes.end()) {
@@ -106,14 +109,14 @@ void sendMessage() {
     calc_delay = false;
   }
 
-  Serial.printf("Sending message: %s\n", msg.c_str());
+  Serial.printf("Sending: [%s] heartbeat - Free Memory %s\n", node_id.c_str(), String(ESP.getFreeHeap()).c_str());
   
   taskSendMessage.setInterval( random(TASK_SECOND * 1, TASK_SECOND * 5));  // between 1 and 5 seconds
 }
 
 
 void receivedCallback(uint32_t from, String & msg) {
-  Serial.printf("startHere: Received from %u msg=%s\n", from, msg.c_str());
+  Serial.printf("Receive: [%u] msg= #### %s  ####\n", from, msg.c_str());
 }
 
 void newConnectionCallback(uint32_t nodeId) {
