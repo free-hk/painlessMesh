@@ -36,7 +36,7 @@ uint8_t txValue = 0;
 #define   MESH_PORT       5555
 
 // Prototypes
-void sendMessage(); 
+void sendHeartbeat(); 
 void receivedCallback(uint32_t from, String & msg);
 void newConnectionCallback(uint32_t nodeId);
 void changedConnectionCallback(); 
@@ -50,8 +50,8 @@ painlessMesh  mesh;
 bool calc_delay = false;
 SimpleList<uint32_t> nodes;
 
-void sendMessage() ; // Prototype
-Task taskSendMessage( TASK_SECOND * 1, TASK_FOREVER, &sendMessage ); // start with a one second interval
+void sendHeartbeat() ; // Prototype
+Task taskSendHeartbeat( TASK_SECOND * 1, TASK_FOREVER, &sendHeartbeat ); // start with a one second interval
 
 // Task to blink the number of nodes
 Task blinkNoNodes;
@@ -103,8 +103,8 @@ void setup() {
   mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
   mesh.onNodeDelayReceived(&delayReceivedCallback);
 
-  userScheduler.addTask( taskSendMessage );
-  taskSendMessage.enable();
+  userScheduler.addTask( taskSendHeartbeat );
+  taskSendHeartbeat.enable();
 
   blinkNoNodes.set(BLINK_PERIOD, (mesh.getNodeList().size() + 1) * 2, []() {
       // If on, switch off, else switch on
@@ -186,7 +186,7 @@ void loop() {
   }
 }
 
-void sendMessage() {
+void sendHeartbeat() {
   #if ARDUINOJSON_VERSION_MAJOR==6
         DynamicJsonDocument jsonBuffer(1024);
         JsonObject msg = jsonBuffer.to<JsonObject>();
@@ -194,6 +194,7 @@ void sendMessage() {
           DynamicJsonBuffer jsonBuffer;
           JsonObject& msg = jsonBuffer.createObject();
   #endif
+  msg["type"] = "heartbeat";
   msg["free_memory"] = String(ESP.getFreeHeap());
   msg["nodeId"] = mesh.getNodeId();
 
@@ -219,7 +220,7 @@ void sendMessage() {
 
   Serial.printf("Sending: [%s] heartbeat - Free Memory %s\n", node_id.c_str(), String(ESP.getFreeHeap()).c_str());
   
-  taskSendMessage.setInterval( random(TASK_SECOND * 1, TASK_SECOND * 5));  // between 1 and 5 seconds
+  taskSendHeartbeat.setInterval( random(TASK_SECOND * 1, TASK_SECOND * 5));  // between 1 and 5 seconds
 }
 
 
