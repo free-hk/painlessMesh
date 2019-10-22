@@ -11,6 +11,17 @@
 #include <Arduino.h>
 #include <painlessMesh.h>
 
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
+
+BLEServer *pServer = NULL;
+BLECharacteristic * pTxCharacteristic;
+bool deviceConnected = false;
+bool oldDeviceConnected = false;
+uint8_t txValue = 0;
+
 // https://gitlab.com/painlessMesh/painlessMesh
 
 // some gpio pin that is connected to an LED...
@@ -25,7 +36,8 @@
 #define   MESH_PORT       5555
 
 // Prototypes
-void sendMessage(); 
+void sendBroadcastMessage(std::string message, bool includeSelf);
+void sendHeartbeat(); 
 void receivedCallback(uint32_t from, String & msg);
 void newConnectionCallback(uint32_t nodeId);
 void changedConnectionCallback(); 
@@ -34,19 +46,53 @@ void delayReceivedCallback(uint32_t from, int32_t delay);
 
 Scheduler     userScheduler; // to control your personal task
 painlessMesh  mesh;
+// SimpleBLE ble;
 
 bool calc_delay = false;
 SimpleList<uint32_t> nodes;
 
-void sendMessage() ; // Prototype
-Task taskSendMessage( TASK_SECOND * 1, TASK_FOREVER, &sendMessage ); // start with a one second interval
+void sendHeartbeat() ; // Prototype
+Task taskSendHeartbeat( TASK_SECOND * 1, TASK_FOREVER, &sendHeartbeat ); // start with a one second interval
 
 // Task to blink the number of nodes
 Task blinkNoNodes;
 bool onFlag = false;
 
+#define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E" // UART service UUID
+#define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
+#define CHARACTERISTIC_UUID_TX "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
+class MyServerCallbacks: public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) {
+      deviceConnected = true;
+    };
+
+    void onDisconnect(BLEServer* pServer) {
+      deviceConnected = false;
+    }
+};
+
+class MyCallbacks: public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pCharacteristic) {
+      std::string rxValue = pCharacteristic->getValue();
+
+      if (rxValue.length() > 0) {
+        sendBroadcastMessage(rxValue, false);
+        Serial.println("*********");
+        Serial.print("Received Value: ");
+        for (int i = 0; i < rxValue.length(); i++)
+          Serial.print(rxValue[i]);
+
+        Serial.println();
+        Serial.println("*********");
+      }
+    }
+};
+
+
 void setup() {
   Serial.begin(115200);
+
+  
 
   pinMode(LED, OUTPUT);
 
@@ -59,8 +105,10 @@ void setup() {
   mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
   mesh.onNodeDelayReceived(&delayReceivedCallback);
 
-  userScheduler.addTask( taskSendMessage );
-  taskSendMessage.enable();
+  BLEDevice::init("UART Service 2");
+
+  userScheduler.addTask( taskSendHeartbeat );
+  taskSendHeartbeat.enable();
 
   blinkNoNodes.set(BLINK_PERIOD, (mesh.getNodeList().size() + 1) * 2, []() {
       // If on, switch off, else switch on
@@ -84,14 +132,65 @@ void setup() {
   blinkNoNodes.enable();
 
   randomSeed(analogRead(A0));
+
+
+  // Create the BLE Server
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+
+  // Create the BLE Service
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+
+  // Create a BLE Characteristic
+  pTxCharacteristic = pService->createCharacteristic(
+										CHARACTERISTIC_UUID_TX,
+										BLECharacteristic::PROPERTY_NOTIFY
+									);
+                      
+  pTxCharacteristic->addDescriptor(new BLE2902());
+
+  BLECharacteristic * pRxCharacteristic = pService->createCharacteristic(
+											 CHARACTERISTIC_UUID_RX,
+											BLECharacteristic::PROPERTY_WRITE
+										);
+
+  pRxCharacteristic->setCallbacks(new MyCallbacks());
+
+  // Start the service
+  pService->start();
+
+  // Start advertising
+  pServer->getAdvertising()->addServiceUUID(pService->getUUID());
+  pServer->getAdvertising()->start();
+  Serial.println("Waiting a client connection to notify...");
 }
 
 void loop() {
   mesh.update();
   digitalWrite(LED, !onFlag);
+
+  if (deviceConnected) {
+        pTxCharacteristic->setValue(&txValue, 1);
+        pTxCharacteristic->notify();
+        txValue++;
+		delay(10); // bluetooth stack will go into congestion, if too many packets are sent
+	}
+
+  // disconnecting
+  if (!deviceConnected && oldDeviceConnected) {
+      delay(500); // give the bluetooth stack the chance to get things ready
+      pServer->startAdvertising(); // restart advertising
+      Serial.println("start advertising");
+      oldDeviceConnected = deviceConnected;
+  }
+  // connecting
+  if (deviceConnected && !oldDeviceConnected) {
+  // do stuff here on connecting
+      oldDeviceConnected = deviceConnected;
+  }
 }
 
-void sendMessage() {
+void sendBroadcastMessage(std::string message, bool includeSelf = false) {
   #if ARDUINOJSON_VERSION_MAJOR==6
         DynamicJsonDocument jsonBuffer(1024);
         JsonObject msg = jsonBuffer.to<JsonObject>();
@@ -99,6 +198,28 @@ void sendMessage() {
           DynamicJsonBuffer jsonBuffer;
           JsonObject& msg = jsonBuffer.createObject();
   #endif
+  msg["type"] = "message";
+  msg["content"] = String(message.c_str());
+  msg["nodeId"] = mesh.getNodeId();
+
+  String str;
+  #if ARDUINOJSON_VERSION_MAJOR==6
+      serializeJson(msg, str);
+  #else
+      msg.printTo(str);
+  #endif
+  mesh.sendBroadcast(str);
+}
+
+void sendHeartbeat() {
+  #if ARDUINOJSON_VERSION_MAJOR==6
+        DynamicJsonDocument jsonBuffer(1024);
+        JsonObject msg = jsonBuffer.to<JsonObject>();
+  #else
+          DynamicJsonBuffer jsonBuffer;
+          JsonObject& msg = jsonBuffer.createObject();
+  #endif
+  msg["type"] = "heartbeat";
   msg["free_memory"] = String(ESP.getFreeHeap());
   msg["nodeId"] = mesh.getNodeId();
 
@@ -124,7 +245,8 @@ void sendMessage() {
 
   Serial.printf("Sending: [%s] heartbeat - Free Memory %s\n", node_id.c_str(), String(ESP.getFreeHeap()).c_str());
   
-  taskSendMessage.setInterval( random(TASK_SECOND * 1, TASK_SECOND * 5));  // between 1 and 5 seconds
+  // taskSendHeartbeat.setInterval( random(TASK_SECOND * 1, TASK_SECOND * 5));  // between 1 and 5 seconds
+  taskSendHeartbeat.setInterval( random(TASK_SECOND * 30, TASK_SECOND * 40) );  // heartbeat send between 30 and 40 seconds
 }
 
 
