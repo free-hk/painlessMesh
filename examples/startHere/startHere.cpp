@@ -10,7 +10,7 @@
 //************************************************************
 #include <Arduino.h>
 #include <painlessMesh.h>
-// #include "SimpleBLE.h"
+
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
@@ -90,7 +90,7 @@ class MyCallbacks: public BLECharacteristicCallbacks {
 void setup() {
   Serial.begin(115200);
 
-  // ble.begin("MeshBLE");
+  BLEDevice::init("UART Service");
 
   pinMode(LED, OUTPUT);
 
@@ -129,8 +129,6 @@ void setup() {
 
   randomSeed(analogRead(A0));
 
-  // Create the BLE Device
-  BLEDevice::init("UART Service");
 
   // Create the BLE Server
   pServer = BLEDevice::createServer();
@@ -158,6 +156,7 @@ void setup() {
   pService->start();
 
   // Start advertising
+  pServer->getAdvertising()->addServiceUUID(pService->getUUID());
   pServer->getAdvertising()->start();
   Serial.println("Waiting a client connection to notify...");
 }
@@ -165,6 +164,26 @@ void setup() {
 void loop() {
   mesh.update();
   digitalWrite(LED, !onFlag);
+
+  if (deviceConnected) {
+        pTxCharacteristic->setValue(&txValue, 1);
+        pTxCharacteristic->notify();
+        txValue++;
+		delay(10); // bluetooth stack will go into congestion, if too many packets are sent
+	}
+
+  // disconnecting
+  if (!deviceConnected && oldDeviceConnected) {
+      delay(500); // give the bluetooth stack the chance to get things ready
+      pServer->startAdvertising(); // restart advertising
+      Serial.println("start advertising");
+      oldDeviceConnected = deviceConnected;
+  }
+  // connecting
+  if (deviceConnected && !oldDeviceConnected) {
+  // do stuff here on connecting
+      oldDeviceConnected = deviceConnected;
+  }
 }
 
 void sendMessage() {
