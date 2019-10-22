@@ -36,7 +36,11 @@ uint8_t txValue = 0;
 #define   MESH_PORT       5555
 
 // Prototypes
-void sendBroadcastMessage(std::string message, bool includeSelf);
+void sendGroupMessage(std::string group_id, std::string message);
+void sendPrivateMessage(std::string receiver_id, std::string message);
+void sendPingMessage(std::string receiver_id);
+void sendPongMessage(std::string receiver_id);
+void sendBroadcastMessage(String message, bool includeSelf);
 void sendHeartbeat(); 
 void receivedCallback(uint32_t from, String & msg);
 void newConnectionCallback(uint32_t nodeId);
@@ -76,7 +80,11 @@ class MyCallbacks: public BLECharacteristicCallbacks {
       std::string rxValue = pCharacteristic->getValue();
 
       if (rxValue.length() > 0) {
-        sendBroadcastMessage(rxValue, false);
+
+        String messageStr = String(rxValue.c_str());
+
+        // sendGroupMessage(rxValue, false);
+
         Serial.println("*********");
         Serial.print("Received Value: ");
         for (int i = 0; i < rxValue.length(); i++)
@@ -91,8 +99,6 @@ class MyCallbacks: public BLECharacteristicCallbacks {
 
 void setup() {
   Serial.begin(115200);
-
-  
 
   pinMode(LED, OUTPUT);
 
@@ -165,6 +171,14 @@ void setup() {
   Serial.println("Waiting a client connection to notify...");
 }
 
+void onButton(){
+    String out = "Group Message : ";
+    out += String(millis() / 1000);
+    Serial.println(out);
+    
+    sendGroupMessage("public", out.c_str());
+}
+
 void loop() {
   mesh.update();
   digitalWrite(LED, !onFlag);
@@ -188,47 +202,91 @@ void loop() {
   // do stuff here on connecting
       oldDeviceConnected = deviceConnected;
   }
+
+  // setup button event
+  static uint8_t lastPinState = 1;
+  uint8_t pinState = digitalRead(0);
+  if(!pinState && lastPinState){
+      onButton();
+  }
+  lastPinState = pinState;
 }
 
-void sendBroadcastMessage(std::string message, bool includeSelf = false) {
-  #if ARDUINOJSON_VERSION_MAJOR==6
-        DynamicJsonDocument jsonBuffer(1024);
-        JsonObject msg = jsonBuffer.to<JsonObject>();
-  #else
-          DynamicJsonBuffer jsonBuffer;
-          JsonObject& msg = jsonBuffer.createObject();
-  #endif
-  msg["type"] = "message";
-  msg["content"] = String(message.c_str());
-  msg["nodeId"] = mesh.getNodeId();
+void sendGroupMessage(std::string group_id, std::string message) {
+  
+  DynamicJsonDocument jsonBuffer(1024);
+  JsonObject msg = jsonBuffer.to<JsonObject>();
+  
+  msg["type"] = "group_message";
+  msg["group_id"] = String(group_id.c_str());
+  msg["message"] = String(message.c_str());
+  msg["source_id"] = mesh.getNodeId();
 
   String str;
-  #if ARDUINOJSON_VERSION_MAJOR==6
-      serializeJson(msg, str);
-  #else
-      msg.printTo(str);
-  #endif
-  mesh.sendBroadcast(str);
+  serializeJson(msg, str);
+  
+  sendBroadcastMessage(str, false);
+}
+
+void sendPrivateMessage(std::string receiver_id, std::string message) {
+  
+  DynamicJsonDocument jsonBuffer(1024);
+  JsonObject msg = jsonBuffer.to<JsonObject>();
+  
+  msg["type"] = "private_message";
+  msg["receiver_id"] = String(receiver_id.c_str());
+  msg["message"] = String(message.c_str());
+  msg["source_id"] = mesh.getNodeId();
+
+  String str;
+  serializeJson(msg, str);
+  
+  sendBroadcastMessage(str, false);
+}
+
+void sendPingMessage(std::string receiver_id) {
+  DynamicJsonDocument jsonBuffer(1024);
+  JsonObject msg = jsonBuffer.to<JsonObject>();
+  
+  msg["type"] = "ping";
+  msg["receiver_id"] = String(receiver_id.c_str());
+  msg["source_id"] = mesh.getNodeId();
+
+  String str;
+  serializeJson(msg, str);
+  
+  sendBroadcastMessage(str, false);
+}
+
+void sendPongMessage(std::string receiver_id) {
+  DynamicJsonDocument jsonBuffer(1024);
+  JsonObject msg = jsonBuffer.to<JsonObject>();
+  
+  msg["type"] = "pong";
+  msg["receiver_id"] = String(receiver_id.c_str());
+  msg["source_id"] = mesh.getNodeId();
+
+  String str;
+  serializeJson(msg, str);
+  
+  sendBroadcastMessage(str, false);
+}
+
+void sendBroadcastMessage(String body, bool includeSelf = false) {
+  
+  mesh.sendBroadcast(body);
 }
 
 void sendHeartbeat() {
-  #if ARDUINOJSON_VERSION_MAJOR==6
-        DynamicJsonDocument jsonBuffer(1024);
-        JsonObject msg = jsonBuffer.to<JsonObject>();
-  #else
-          DynamicJsonBuffer jsonBuffer;
-          JsonObject& msg = jsonBuffer.createObject();
-  #endif
+  DynamicJsonDocument jsonBuffer(1024);
+  JsonObject msg = jsonBuffer.to<JsonObject>();
+  
   msg["type"] = "heartbeat";
   msg["free_memory"] = String(ESP.getFreeHeap());
   msg["nodeId"] = mesh.getNodeId();
 
   String str;
-  #if ARDUINOJSON_VERSION_MAJOR==6
-      serializeJson(msg, str);
-  #else
-      msg.printTo(str);
-  #endif
+  serializeJson(msg, str);
   mesh.sendBroadcast(str);
 
   String node_id = "";
@@ -248,7 +306,6 @@ void sendHeartbeat() {
   // taskSendHeartbeat.setInterval( random(TASK_SECOND * 1, TASK_SECOND * 5));  // between 1 and 5 seconds
   taskSendHeartbeat.setInterval( random(TASK_SECOND * 30, TASK_SECOND * 40) );  // heartbeat send between 30 and 40 seconds
 }
-
 
 void receivedCallback(uint32_t from, String & msg) {
   Serial.printf("Receive: [%u] msg= #### %s  ####\n", from, msg.c_str());
