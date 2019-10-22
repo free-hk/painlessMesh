@@ -36,6 +36,7 @@ uint8_t txValue = 0;
 #define   MESH_PORT       5555
 
 // Prototypes
+void sendBroadcastMessage(std::string message, bool includeSelf);
 void sendHeartbeat(); 
 void receivedCallback(uint32_t from, String & msg);
 void newConnectionCallback(uint32_t nodeId);
@@ -75,6 +76,7 @@ class MyCallbacks: public BLECharacteristicCallbacks {
       std::string rxValue = pCharacteristic->getValue();
 
       if (rxValue.length() > 0) {
+        sendBroadcastMessage(rxValue, false);
         Serial.println("*********");
         Serial.print("Received Value: ");
         for (int i = 0; i < rxValue.length(); i++)
@@ -90,7 +92,7 @@ class MyCallbacks: public BLECharacteristicCallbacks {
 void setup() {
   Serial.begin(115200);
 
-  BLEDevice::init("UART Service");
+  
 
   pinMode(LED, OUTPUT);
 
@@ -102,6 +104,8 @@ void setup() {
   mesh.onChangedConnections(&changedConnectionCallback);
   mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
   mesh.onNodeDelayReceived(&delayReceivedCallback);
+
+  BLEDevice::init("UART Service 2");
 
   userScheduler.addTask( taskSendHeartbeat );
   taskSendHeartbeat.enable();
@@ -184,6 +188,27 @@ void loop() {
   // do stuff here on connecting
       oldDeviceConnected = deviceConnected;
   }
+}
+
+void sendBroadcastMessage(std::string message, bool includeSelf = false) {
+  #if ARDUINOJSON_VERSION_MAJOR==6
+        DynamicJsonDocument jsonBuffer(1024);
+        JsonObject msg = jsonBuffer.to<JsonObject>();
+  #else
+          DynamicJsonBuffer jsonBuffer;
+          JsonObject& msg = jsonBuffer.createObject();
+  #endif
+  msg["type"] = "message";
+  msg["content"] = String(message.c_str());
+  msg["nodeId"] = mesh.getNodeId();
+
+  String str;
+  #if ARDUINOJSON_VERSION_MAJOR==6
+      serializeJson(msg, str);
+  #else
+      msg.printTo(str);
+  #endif
+  mesh.sendBroadcast(str);
 }
 
 void sendHeartbeat() {
