@@ -111,7 +111,11 @@ void setup() {
   mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
   mesh.onNodeDelayReceived(&delayReceivedCallback);
 
-  BLEDevice::init("UART Service 2");
+  String node_id = "UART Service - ";
+  node_id += mesh.getNodeId();
+  Serial.println(node_id);
+
+  BLEDevice::init(node_id.c_str());
 
   userScheduler.addTask( taskSendHeartbeat );
   taskSendHeartbeat.enable();
