@@ -15,12 +15,15 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <deque>
 
 BLEServer *pServer = NULL;
 BLECharacteristic * pTxCharacteristic;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
 uint8_t txValue = 0;
+
+std::deque<String> read_message_queue = {};
 
 // https://gitlab.com/painlessMesh/painlessMesh
 
@@ -103,7 +106,9 @@ class MyCallbacks: public BLECharacteristicCallbacks {
     }
 
     void onRead(BLECharacteristic *pCharacteristic) {
-      pCharacteristic->setValue("ABCD");
+      String message = read_message_queue.front();
+      pCharacteristic->setValue(message.c_str());
+      read_message_queue.pop_front();
     }
 };
 
@@ -346,6 +351,7 @@ void sendHeartbeat() {
 }
 
 void receivedCallback(uint32_t from, String & msg) {
+  read_message_queue.push_back( String(msg.c_str()) );
   Serial.printf("Receive: [%u] msg= #### %s  ####\n", from, msg.c_str());
 }
 
