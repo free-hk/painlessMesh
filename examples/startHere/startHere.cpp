@@ -36,7 +36,9 @@ uint8_t txValue = 0;
 #define   MESH_PORT       5555
 
 // Prototypes
+void decodeMessage(String message);
 void sendGroupMessage(std::string group_id, std::string message);
+void sendGroupMessage(String group_id, String message);
 void sendPrivateMessage(std::string receiver_id, std::string message);
 void sendPingMessage(std::string receiver_id);
 void sendPongMessage(std::string receiver_id);
@@ -75,6 +77,10 @@ class MyServerCallbacks: public BLEServerCallbacks {
     }
 };
 
+void decodeMessage(String message) {
+  sendGroupMessage(String("public"), message);
+}
+
 class MyCallbacks: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
       std::string rxValue = pCharacteristic->getValue();
@@ -82,7 +88,7 @@ class MyCallbacks: public BLECharacteristicCallbacks {
       if (rxValue.length() > 0) {
 
         String messageStr = String(rxValue.c_str());
-
+        decodeMessage(messageStr);
         // sendGroupMessage(rxValue, false);
 
         Serial.println("*********");
@@ -180,7 +186,7 @@ void onButton(){
     out += String(millis() / 1000);
     Serial.println(out);
     
-    sendGroupMessage("public", out.c_str());
+    sendGroupMessage(String("public"), out);
 }
 
 void loop() {
@@ -214,6 +220,22 @@ void loop() {
       onButton();
   }
   lastPinState = pinState;
+}
+
+void sendGroupMessage(String group_id, String message) {
+  
+  DynamicJsonDocument jsonBuffer(1024);
+  JsonObject msg = jsonBuffer.to<JsonObject>();
+  
+  msg["type"] = "group_message";
+  msg["group_id"] = group_id;
+  msg["message"] = message;
+  msg["source_id"] = mesh.getNodeId();
+
+  String str;
+  serializeJson(msg, str);
+  
+  sendBroadcastMessage(str, false);
 }
 
 void sendGroupMessage(std::string group_id, std::string message) {
