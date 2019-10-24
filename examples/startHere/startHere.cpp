@@ -17,6 +17,23 @@
 #include <BLE2902.h>
 #include <deque>
 
+#define   OLED 1
+
+#ifdef OLED
+  //Libraries for OLED Display
+  #include <Wire.h>
+  #include <Adafruit_GFX.h>
+  #include <Adafruit_SSD1306.h>
+
+  #define OLED_SDA 4
+  #define OLED_SCL 15 
+  #define OLED_RST 16
+  #define SCREEN_WIDTH 128 // OLED display width, in pixels
+  #define SCREEN_HEIGHT 64 // OLED display height, in pixels
+
+  Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RST);
+#endif
+
 BLEServer *pServer = NULL;
 BLECharacteristic * pTxCharacteristic;
 bool deviceConnected = false;
@@ -38,6 +55,8 @@ std::deque<String> read_message_queue = {};
 #define   MESH_PASSWORD   "somethingSneaky"
 #define   MESH_PORT       5555
 
+
+
 // Prototypes
 void decodeMessage(String message);
 void sendGroupMessage(std::string group_id, std::string message);
@@ -53,9 +72,13 @@ void changedConnectionCallback();
 void nodeTimeAdjustedCallback(int32_t offset); 
 void delayReceivedCallback(uint32_t from, int32_t delay);
 
+#ifdef OLED
+void initOLED();
+void loopDisplay();
+#endif
+
 Scheduler     userScheduler; // to control your personal task
 painlessMesh  mesh;
-// SimpleBLE ble;
 
 bool calc_delay = false;
 SimpleList<uint32_t> nodes;
@@ -95,28 +118,63 @@ class MyCallbacks: public BLECharacteristicCallbacks {
         decodeMessage(messageStr);
         // sendGroupMessage(rxValue, false);
 
-        Serial.println("*********");
-        Serial.print("Received Value: ");
-        for (int i = 0; i < rxValue.length(); i++)
-          Serial.print(rxValue[i]);
+        // Serial.println("*********");
+        // Serial.print("Received Value: ");
+        // for (int i = 0; i < rxValue.length(); i++)
+        //   Serial.print(rxValue[i]);
 
-        Serial.println();
-        Serial.println("*********");
+        // Serial.println();
+        // Serial.println("*********");
       }
     }
 
     void onRead(BLECharacteristic *pCharacteristic) {
-      String message = read_message_queue.front();
-      pCharacteristic->setValue(message.c_str());
-      read_message_queue.pop_front();
+      if (read_message_queue.size() > 0) {
+        String message = read_message_queue.front();
+        pCharacteristic->setValue(message.c_str());
+        read_message_queue.pop_front();
+      }
+      else {
+        // if no message in queue
+        String message = "{}";
+        pCharacteristic->setValue(message.c_str());
+      }
     }
 };
+
+#ifdef OLED
+void initOLED() {
+  //reset OLED display via software
+  pinMode(OLED_RST, OUTPUT);
+  digitalWrite(OLED_RST, LOW);
+  delay(20);
+  digitalWrite(OLED_RST, HIGH);
+
+  //initialize OLED
+  Wire.begin(OLED_SDA, OLED_SCL);
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3c, false, false)) { // Address 0x3C for 128x32
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;); // Don't proceed, loop forever
+  }
+  
+  display.clearDisplay();
+  display.setTextColor(WHITE);
+  display.setTextSize(1);
+  display.setCursor(0,0);
+  display.print("");
+  display.display();
+}
+#endif
 
 
 void setup() {
   Serial.begin(115200);
 
   pinMode(LED, OUTPUT);
+
+  #ifdef OLED
+  initOLED();
+  #endif
 
   mesh.setDebugMsgTypes(ERROR | DEBUG);  // set before init() so that you can see error messages
 
@@ -201,19 +259,46 @@ void setup() {
 void onButton(){
     String out = "Group Message : ";
     out += String(millis() / 1000);
-    Serial.println(out);
+    // Serial.println(out);
     
     sendGroupMessage(String("public"), out);
 }
+
+#ifdef OLED
+void loopDisplay() {
+  display.clearDisplay();
+  display.setCursor(0,0);
+  display.println("Free HK - WiFi Mesh");
+  display.setCursor(0,15);
+  display.setTextSize(1);
+
+  String node_id = "Node ID - ";
+  node_id += mesh.getNodeId();
+
+  display.print(node_id);
+  
+
+  if (read_message_queue.size() > 0) {
+    String message = read_message_queue.back();
+    display.setCursor(0,30);
+    display.print(message);
+
+  }
+  // display.print("Counter:");
+  // display.setCursor(50,30);
+  // display.print(counter);      
+  display.display();
+}
+#endif
 
 void loop() {
   mesh.update();
   digitalWrite(LED, !onFlag);
 
   if (deviceConnected) {
+        txValue = read_message_queue.size();
         pTxCharacteristic->setValue(&txValue, 1);
         pTxCharacteristic->notify();
-        txValue++;
 		delay(10); // bluetooth stack will go into congestion, if too many packets are sent
 	}
 
@@ -237,6 +322,11 @@ void loop() {
       onButton();
   }
   lastPinState = pinState;
+
+  
+  #ifdef OLED
+  loopDisplay();
+  #endif
 }
 
 void sendGroupMessage(String group_id, String message) {
@@ -316,7 +406,9 @@ void sendPongMessage(std::string receiver_id) {
 }
 
 void sendBroadcastMessage(String body, bool includeSelf = false) {
-  
+  String node_id = "";
+  node_id += mesh.getNodeId();
+  Serial.printf("Sending: [%s] %s\n", node_id.c_str(), body.c_str());
   mesh.sendBroadcast(body);
 }
 
