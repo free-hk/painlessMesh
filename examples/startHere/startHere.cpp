@@ -17,7 +17,8 @@
 #include <BLE2902.h>
 #include <deque>
 
-#define   OLED 1
+#define   OLED 0
+#define   TTGOLED 0
 
 #ifdef OLED
   //Libraries for OLED Display
