@@ -17,7 +17,7 @@
 #include <BLE2902.h>
 #include <deque>
 
-#define   OLED 0
+#define   OLED 1
 #define   TTGOLED 0
 
 #ifdef OLED
@@ -33,6 +33,18 @@
   #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
   Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RST);
+#endif
+
+#ifdef TTGOLED
+  #define TEXT "aA MWyz~12" // Text that will be printed on screen in any font
+  #include <Adafruit_GFX.h>
+  #include "./Free_Fonts.h" // Include the header file attached to this sketch
+
+  #include "SPI.h"
+  #include "TFT_eSPI.h"
+
+  // Use hardware SPI
+  TFT_eSPI tft = TFT_eSPI();
 #endif
 
 BLEServer *pServer = NULL;
@@ -75,7 +87,12 @@ void delayReceivedCallback(uint32_t from, int32_t delay);
 
 #ifdef OLED
 void initOLED();
-void loopDisplay();
+void loopOLEDDisplay();
+#endif
+
+#ifdef TTGOLED
+void initTTGOLED();
+void loopTTGOLEDDisplay();
 #endif
 
 Scheduler     userScheduler; // to control your personal task
@@ -167,6 +184,15 @@ void initOLED() {
 }
 #endif
 
+#ifdef TTGOLED
+
+void initTTGOLED() {
+  tft.begin();
+
+  tft.setRotation(1);
+}
+#endif
+
 
 void setup() {
   Serial.begin(115200);
@@ -175,6 +201,10 @@ void setup() {
 
   #ifdef OLED
   initOLED();
+  #endif
+
+  #ifdef TTGOLED
+  initTTGOLED();
   #endif
 
   mesh.setDebugMsgTypes(ERROR | DEBUG);  // set before init() so that you can see error messages
@@ -266,7 +296,7 @@ void onButton(){
 }
 
 #ifdef OLED
-void loopDisplay() {
+void loopOLEDDisplay() {
   display.clearDisplay();
   display.setCursor(0,0);
   display.println("Free HK - WiFi Mesh");
@@ -290,6 +320,23 @@ void loopDisplay() {
   // display.print(counter);      
   display.display();
 }
+#endif
+
+#ifdef TTGOLED
+void loopTTGOLEDDisplay() {
+  Serial.printf("loopTTGOLEDDisplay");
+  tft.setTextDatum(MC_DATUM);
+
+  // Set text colour to orange with black background
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  
+  tft.fillScreen(TFT_BLACK);            // Clear screen
+  tft.setFreeFont(FF18);                 // Select the font
+  tft.drawString(sFF1, 160, 60, GFXFF);// Print the string name of the font
+  tft.setFreeFont(FF1);                 // Select the font
+  tft.drawString(TEXT, 160, 120, GFXFF);// Print the string name of the font
+}
+
 #endif
 
 void loop() {
@@ -326,7 +373,11 @@ void loop() {
 
   
   #ifdef OLED
-  loopDisplay();
+  loopOLEDDisplay();
+  #endif
+
+  #ifdef TTGOLED
+  loopTTGOLEDDisplay();
   #endif
 }
 
