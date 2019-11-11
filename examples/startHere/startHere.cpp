@@ -17,8 +17,8 @@
 #include <BLE2902.h>
 #include <deque>
 
-#define   OLED 1
-#define   TTGOLED 0
+// #define   OLED 1
+#define   TTGOLED 1
 
 #ifdef OLED
   //Libraries for OLED Display
@@ -38,7 +38,10 @@
 #ifdef TTGOLED
   #define TEXT "aA MWyz~12" // Text that will be printed on screen in any font
   #include <Adafruit_GFX.h>
-  #include "./Free_Fonts.h" // Include the header file attached to this sketch
+  #include <Adafruit_TFTLCD.h>
+  #include "Fonts/FreeSans9pt7b.h"    // when you want other fonts
+  // #include "./Free_Fonts.h" // Include the header file attached to this sketch
+  // #include "FreeDefaultFonts.h" // when you want other fonts
 
   #include "SPI.h"
   #include "TFT_eSPI.h"
@@ -187,9 +190,35 @@ void initOLED() {
 #ifdef TTGOLED
 
 void initTTGOLED() {
+
+  Serial.printf("initTTGOLED");
   tft.begin();
 
+  Serial.printf("initTTGOLED 2");
+
   tft.setRotation(1);
+
+  Serial.printf("initTTGOLED 3");
+
+  tft.setTextDatum(MC_DATUM);
+
+  Serial.printf("initTTGOLED 4");
+  // // Set text colour to orange with black background
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+
+  Serial.printf("initTTGOLED 5");
+  
+  tft.fillScreen(TFT_BLACK);            // Clear screen
+
+  Serial.printf("initTTGOLED 6");
+
+  tft.setFreeFont(FF18);                 // Select the font
+
+  Serial.printf("initTTGOLED 7");
+
+  // tft.drawString(sFF1, 160, 60, GFXFF);// Print the string name of the font
+
+  // Serial.printf("initTTGOLED 8");
 }
 #endif
 
@@ -324,17 +353,17 @@ void loopOLEDDisplay() {
 
 #ifdef TTGOLED
 void loopTTGOLEDDisplay() {
-  Serial.printf("loopTTGOLEDDisplay");
-  tft.setTextDatum(MC_DATUM);
+  // Serial.printf("loopTTGOLEDDisplay");
+  // tft.setTextDatum(MC_DATUM);
 
-  // Set text colour to orange with black background
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  // // Set text colour to orange with black background
+  // tft.setTextColor(TFT_WHITE, TFT_BLACK);
   
-  tft.fillScreen(TFT_BLACK);            // Clear screen
-  tft.setFreeFont(FF18);                 // Select the font
-  tft.drawString(sFF1, 160, 60, GFXFF);// Print the string name of the font
-  tft.setFreeFont(FF1);                 // Select the font
-  tft.drawString(TEXT, 160, 120, GFXFF);// Print the string name of the font
+  // tft.fillScreen(TFT_BLACK);            // Clear screen
+  // tft.setFreeFont(FF18);                 // Select the font
+  // tft.drawString(sFF1, 160, 60, GFXFF);// Print the string name of the font
+  // tft.setFreeFont(FF1);                 // Select the font
+  // tft.drawString(TEXT, 160, 120, GFXFF);// Print the string name of the font
 }
 
 #endif
@@ -490,8 +519,8 @@ void sendHeartbeat() {
 
   Serial.printf("Sending: [%s] heartbeat - Free Memory %s\n", node_id.c_str(), String(ESP.getFreeHeap()).c_str());
   
-  // taskSendHeartbeat.setInterval( random(TASK_SECOND * 1, TASK_SECOND * 5));  // between 1 and 5 seconds
-  taskSendHeartbeat.setInterval( random(TASK_SECOND * 30, TASK_SECOND * 40) );  // heartbeat send between 30 and 40 seconds
+  taskSendHeartbeat.setInterval( random(TASK_SECOND * 1, TASK_SECOND * 5));  // between 1 and 5 seconds
+  // taskSendHeartbeat.setInterval( random(TASK_SECOND * 30, TASK_SECOND * 40) );  // heartbeat send between 30 and 40 seconds
 }
 
 void receivedCallback(uint32_t from, String & msg) {
