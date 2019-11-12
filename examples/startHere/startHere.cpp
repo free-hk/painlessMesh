@@ -110,6 +110,21 @@ void changedConnectionCallback();
 void nodeTimeAdjustedCallback(int32_t offset); 
 void delayReceivedCallback(uint32_t from, int32_t delay);
 
+Scheduler     userScheduler; // to control your personal task
+painlessMesh  mesh;
+
+bool calc_delay = false;
+SimpleList<uint32_t> nodes;
+
+void sendHeartbeat() ; // Prototype
+Task taskSendHeartbeat( TASK_SECOND * 1, TASK_FOREVER, &sendHeartbeat ); // start with a one second interval
+
+// Task to blink the number of nodes
+Task blinkNoNodes;
+bool onFlag = false;
+
+bool display_need_update = true;
+
 #ifdef OLED
 void initOLED();
 void loopOLEDDisplay();
@@ -132,28 +147,33 @@ void initTTGOLED() {
   tft.setTextDatum(MC_DATUM);
   tft.setTextSize(1);
 
-  String voltage = "Sample :";
   tft.fillScreen(TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
-  tft.drawString(voltage,  tft.width() / 2, tft.height() / 2 );
 }
 
 void loopTTGOLEDDisplay() {
+
+  if (display_need_update) {
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextDatum(MC_DATUM);
+    tft.drawString("Free HK - WiFi Mesh",  tft.width() / 2, 20 );
+
+    String node_id = "Node ID - ";
+    node_id += mesh.getNodeId();
+
+    tft.drawString(node_id,  tft.width() / 2, 40 );  
+    display_need_update = false;
+
+    tft.setTextDatum(MC_DATUM);
+    tft.setTextSize(2);
+    tft.setTextColor(TFT_RED);
+    tft.drawString("2 Unread Messages",  tft.width() / 2, 100 );  
+
+  }
 }
 #endif
 
-Scheduler     userScheduler; // to control your personal task
-painlessMesh  mesh;
 
-bool calc_delay = false;
-SimpleList<uint32_t> nodes;
-
-void sendHeartbeat() ; // Prototype
-Task taskSendHeartbeat( TASK_SECOND * 1, TASK_FOREVER, &sendHeartbeat ); // start with a one second interval
-
-// Task to blink the number of nodes
-Task blinkNoNodes;
-bool onFlag = false;
 
 #define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E" // UART service UUID
 #define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
