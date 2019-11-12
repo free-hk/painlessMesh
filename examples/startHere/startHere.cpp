@@ -36,18 +36,41 @@
 #endif
 
 #ifdef TTGOLED
-  #define TEXT "aA MWyz~12" // Text that will be printed on screen in any font
-  #include <Adafruit_GFX.h>
-  #include <Adafruit_TFTLCD.h>
-  #include "Fonts/FreeSans9pt7b.h"    // when you want other fonts
-  // #include "./Free_Fonts.h" // Include the header file attached to this sketch
-  // #include "FreeDefaultFonts.h" // when you want other fonts
+  #include <TFT_eSPI.h>
+  #include <SPI.h>
+  #include "WiFi.h"
+  #include <Wire.h>
+  #include <Button2.h>
+  #include "esp_adc_cal.h"
+  //#include "bmp.h"
 
-  #include "SPI.h"
-  #include "TFT_eSPI.h"
+  #ifndef TFT_DISPOFF
+  #define TFT_DISPOFF 0x28
+  #endif
 
-  // Use hardware SPI
-  TFT_eSPI tft = TFT_eSPI();
+  #ifndef TFT_SLPIN
+  #define TFT_SLPIN   0x10
+  #endif
+
+  #define TFT_MOSI            19
+  #define TFT_SCLK            18
+  #define TFT_CS              5
+  #define TFT_DC              16
+  #define TFT_RST             23 
+
+  #define TFT_BL          4  // Display backlight control pin
+  #define ADC_EN          14
+  #define ADC_PIN         34
+  #define BUTTON_1        35
+  #define BUTTON_2        0
+
+  TFT_eSPI tft = TFT_eSPI(135, 240); // Invoke custom library
+  Button2 btn1(BUTTON_1);
+  Button2 btn2(BUTTON_2);
+
+  char buff[512];
+  int vref = 1100;
+  int btnCick = false;
 #endif
 
 BLEServer *pServer = NULL;
@@ -70,7 +93,6 @@ std::deque<String> read_message_queue = {};
 #define   MESH_SSID       "FreeHK"
 #define   MESH_PASSWORD   "somethingSneaky"
 #define   MESH_PORT       5555
-
 
 
 // Prototypes
@@ -96,6 +118,28 @@ void loopOLEDDisplay();
 #ifdef TTGOLED
 void initTTGOLED();
 void loopTTGOLEDDisplay();
+#endif
+
+#ifdef TTGOLED
+
+void initTTGOLED() {
+  tft.init();
+  tft.setRotation(1);
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE);
+  tft.setCursor(0, 0);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextSize(1);
+
+  String voltage = "Sample :";
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString(voltage,  tft.width() / 2, tft.height() / 2 );
+}
+
+void loopTTGOLEDDisplay() {
+}
 #endif
 
 Scheduler     userScheduler; // to control your personal task
@@ -184,41 +228,6 @@ void initOLED() {
   display.setCursor(0,0);
   display.print("");
   display.display();
-}
-#endif
-
-#ifdef TTGOLED
-
-void initTTGOLED() {
-
-  Serial.printf("initTTGOLED");
-  tft.begin();
-
-  Serial.printf("initTTGOLED 2");
-
-  tft.setRotation(1);
-
-  Serial.printf("initTTGOLED 3");
-
-  tft.setTextDatum(MC_DATUM);
-
-  Serial.printf("initTTGOLED 4");
-  // // Set text colour to orange with black background
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-
-  Serial.printf("initTTGOLED 5");
-  
-  tft.fillScreen(TFT_BLACK);            // Clear screen
-
-  Serial.printf("initTTGOLED 6");
-
-  tft.setFreeFont(FF18);                 // Select the font
-
-  Serial.printf("initTTGOLED 7");
-
-  // tft.drawString(sFF1, 160, 60, GFXFF);// Print the string name of the font
-
-  // Serial.printf("initTTGOLED 8");
 }
 #endif
 
@@ -349,23 +358,6 @@ void loopOLEDDisplay() {
   // display.print(counter);      
   display.display();
 }
-#endif
-
-#ifdef TTGOLED
-void loopTTGOLEDDisplay() {
-  // Serial.printf("loopTTGOLEDDisplay");
-  // tft.setTextDatum(MC_DATUM);
-
-  // // Set text colour to orange with black background
-  // tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  
-  // tft.fillScreen(TFT_BLACK);            // Clear screen
-  // tft.setFreeFont(FF18);                 // Select the font
-  // tft.drawString(sFF1, 160, 60, GFXFF);// Print the string name of the font
-  // tft.setFreeFont(FF1);                 // Select the font
-  // tft.drawString(TEXT, 160, 120, GFXFF);// Print the string name of the font
-}
-
 #endif
 
 void loop() {
