@@ -17,6 +17,8 @@
 #include <BLE2902.h>
 #include <deque>
 
+#define   VERSION       "1.1.1"
+
 // #define   OLED 1
 #define   TTGOLED 1
 
@@ -80,6 +82,7 @@ bool oldDeviceConnected = false;
 uint8_t txValue = 0;
 
 std::deque<String> read_message_queue = {};
+std::deque<String> heartbeat_message_queue = {};
 
 // https://gitlab.com/painlessMesh/painlessMesh
 
@@ -91,7 +94,7 @@ std::deque<String> read_message_queue = {};
 #define   BLINK_DURATION  200  // milliseconds LED is on for
 
 #define   MESH_SSID       "FreeHK"
-#define   MESH_PASSWORD   "somethingSneaky"
+#define   MESH_PASSWORD   "6q8DS9YQbr"
 #define   MESH_PORT       5555
 
 
@@ -156,7 +159,10 @@ void loopTTGOLEDDisplay() {
   if (display_need_update) {
     tft.fillScreen(TFT_BLACK);
     tft.setTextDatum(MC_DATUM);
-    tft.drawString("Free HK - WiFi Mesh",  tft.width() / 2, 20 );
+
+    String out = "Free HK - WiFi Mesh v";
+    out += String(VERSION);
+    tft.drawString(out,  tft.width() / 2, 20 );
 
     String node_id = "Node ID - ";
     node_id += mesh.getNodeId();
@@ -265,7 +271,8 @@ void setup() {
   initTTGOLED();
   #endif
 
-  mesh.setDebugMsgTypes(ERROR | DEBUG);  // set before init() so that you can see error messages
+  mesh.setDebugMsgTypes( ERROR | DEBUG| CONNECTION | SYNC );
+  // mesh.setDebugMsgTypes(ERROR | DEBUG);  // set before init() so that you can see error messages
 
   mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT);
   mesh.onReceive(&receivedCallback);
@@ -357,7 +364,9 @@ void onButton(){
 void loopOLEDDisplay() {
   display.clearDisplay();
   display.setCursor(0,0);
-  display.println("Free HK - WiFi Mesh");
+  String out = "Free HK - ";
+  out += String(VERSION);
+  display.println(out);
   display.setCursor(0,15);
   display.setTextSize(1);
 
@@ -365,7 +374,6 @@ void loopOLEDDisplay() {
   node_id += mesh.getNodeId();
 
   display.print(node_id);
-  
 
   if (read_message_queue.size() > 0) {
     String message = read_message_queue.back();
@@ -536,8 +544,19 @@ void sendHeartbeat() {
 }
 
 void receivedCallback(uint32_t from, String & msg) {
-  read_message_queue.push_back( String(msg.c_str()) );
-  Serial.printf("Receive: [%u] msg= #### %s  ####\n", from, msg.c_str());
+
+  DynamicJsonDocument doc(1024);
+  deserializeJson(doc, msg.c_str());
+  const char* type = doc["type"];
+
+  if (strcmp ("heartbeat", type) == 0) {
+    Serial.printf("heartbeat message from : %u\n", from);
+  } else {
+    read_message_queue.push_back( String(msg.c_str()) );
+    Serial.printf("Receive: [%u] msg= #### %s  ####\n", from, msg.c_str());
+  }
+
+  
 }
 
 void newConnectionCallback(uint32_t nodeId) {
