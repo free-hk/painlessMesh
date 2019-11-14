@@ -17,7 +17,7 @@
 #include <BLE2902.h>
 #include <deque>
 
-#define   VERSION       "1.1.5"
+#define   VERSION       "1.1.6"
 
 // #define   OLED 1
 #define   TTGOLED 1
@@ -102,7 +102,8 @@ std::deque<String> heartbeat_message_queue = {};
 void decodeMessage(String message);
 void sendGroupMessage(std::string group_id, std::string message);
 void sendGroupMessage(String group_id, String message);
-void sendPrivateMessage(std::string receiver_id, std::string message);
+void sendPrivateMessage(double receiver_id, String message);
+void sendPrivateMessage(double receiver_id, std::string message);
 void sendPingMessage(std::string receiver_id);
 void sendPongMessage(std::string receiver_id);
 void sendBroadcastMessage(String message, bool includeSelf);
@@ -366,6 +367,8 @@ void onButton(){
     // Serial.println(out);
     
     sendGroupMessage(String("public"), out);
+    sendPrivateMessage(673514637, out);
+
 }
 
 #ifdef OLED
@@ -470,13 +473,28 @@ void sendGroupMessage(std::string group_id, std::string message) {
   sendBroadcastMessage(str, false);
 }
 
-void sendPrivateMessage(std::string receiver_id, std::string message) {
+void sendPrivateMessage(double receiver_id, String message) {
+  DynamicJsonDocument jsonBuffer(1024);
+  JsonObject msg = jsonBuffer.to<JsonObject>();
+  
+  msg["type"] = "pm";
+  msg["receiver_id"] = receiver_id;
+  msg["message"] = message;
+  msg["source_id"] = mesh.getNodeId();
+
+  String str;
+  serializeJson(msg, str);
+  
+  sendBroadcastMessage(str, false);
+}
+
+void sendPrivateMessage(double receiver_id, std::string message) {
   
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
   
   msg["type"] = "pm";
-  msg["receiver_id"] = String(receiver_id.c_str());
+  msg["receiver_id"] = receiver_id;
   msg["message"] = String(message.c_str());
   msg["source_id"] = mesh.getNodeId();
 
@@ -564,14 +582,14 @@ void receivedCallback(uint32_t from, String & msg) {
     display_need_update = true;
     Serial.printf("Group message Receive: [%u] msg= #### %s  ####\n", from, msg.c_str());
   } else if (strcmp ("pm", type) == 0) {
-    double receiver_id = doc["receiver_id"];
-    if (mesh.getNodeId() == receiver_id) {
+
+    if (mesh.getNodeId() == doc["receiver_id"]) {
       read_message_queue.push_back( String(msg.c_str()) );
       display_need_update = true;
       Serial.printf("Private Message Receive: [%u] msg= #### %s  ####\n", from, msg.c_str());
     }
     else {
-      Serial.printf("Private Message Receive but not me: from : [%u] to : [%u] msg= #### %s  ####\n", from, msg.c_str());
+      Serial.printf("Private Message Receive but not me: from : [%u] to : [%u] msg= #### %s  ####\n", from, doc["receiver_id"],  msg.c_str());
     }
   }
 
