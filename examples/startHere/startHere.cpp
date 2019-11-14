@@ -557,14 +557,13 @@ void receivedCallback(uint32_t from, String & msg) {
   deserializeJson(doc, msg.c_str());
   const char* type = doc["type"];
 
-
   if (strcmp ("heartbeat", type) == 0) {
     Serial.printf("heartbeat message from : %u\n", from);
-  } else if (strcmp ("gm", type)) {
+  } else if (strcmp ("gm", type) == 0) {
     read_message_queue.push_back( String(msg.c_str()) );
     display_need_update = true;
     Serial.printf("Group message Receive: [%u] msg= #### %s  ####\n", from, msg.c_str());
-  } else if (strcmp ("pm", type)) {
+  } else if (strcmp ("pm", type) == 0) {
     double receiver_id = doc["receiver_id"];
     if (mesh.getNodeId() == receiver_id) {
       read_message_queue.push_back( String(msg.c_str()) );
@@ -572,9 +571,8 @@ void receivedCallback(uint32_t from, String & msg) {
       Serial.printf("Private Message Receive: [%u] msg= #### %s  ####\n", from, msg.c_str());
     }
     else {
-      Serial.printf("Private Message Receive but not me: [%u] msg= #### %s  ####\n", from, msg.c_str());
+      Serial.printf("Private Message Receive but not me: from : [%u] to : [%u] msg= #### %s  ####\n", from, msg.c_str());
     }
-    
   }
 
   
