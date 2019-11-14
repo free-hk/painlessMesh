@@ -17,7 +17,7 @@
 #include <BLE2902.h>
 #include <deque>
 
-#define   VERSION       "1.1.1"
+#define   VERSION       "1.1.5"
 
 // #define   OLED 1
 #define   TTGOLED 1
@@ -160,6 +160,8 @@ void loopTTGOLEDDisplay() {
     tft.fillScreen(TFT_BLACK);
     tft.setTextDatum(MC_DATUM);
 
+    tft.setTextSize(1);
+    tft.setTextColor(TFT_WHITE);
     String out = "Free HK - WiFi Mesh v";
     out += String(VERSION);
     tft.drawString(out,  tft.width() / 2, 20 );
@@ -173,7 +175,12 @@ void loopTTGOLEDDisplay() {
     tft.setTextDatum(MC_DATUM);
     tft.setTextSize(2);
     tft.setTextColor(TFT_RED);
-    tft.drawString("2 Unread Messages",  tft.width() / 2, 100 );  
+
+    String unread_message = "";
+    unread_message += String(read_message_queue.size());
+    unread_message += " Unread Messages";
+
+    tft.drawString(unread_message, tft.width() / 2, 100 );  
 
   }
 }
@@ -283,6 +290,7 @@ void setup() {
 
   String node_id = "UART Service - ";
   node_id += mesh.getNodeId();
+  node_id += "\nVersion = " + String(VERSION);
   Serial.println(node_id);
 
   BLEDevice::init(node_id.c_str());
@@ -435,7 +443,7 @@ void sendGroupMessage(String group_id, String message) {
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
   
-  msg["type"] = "group_message";
+  msg["type"] = "gm";
   msg["group_id"] = group_id;
   msg["message"] = message;
   msg["source_id"] = mesh.getNodeId();
@@ -451,7 +459,7 @@ void sendGroupMessage(std::string group_id, std::string message) {
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
   
-  msg["type"] = "group_message";
+  msg["type"] = "gm";
   msg["group_id"] = String(group_id.c_str());
   msg["message"] = String(message.c_str());
   msg["source_id"] = mesh.getNodeId();
@@ -467,7 +475,7 @@ void sendPrivateMessage(std::string receiver_id, std::string message) {
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
   
-  msg["type"] = "private_message";
+  msg["type"] = "pm";
   msg["receiver_id"] = String(receiver_id.c_str());
   msg["message"] = String(message.c_str());
   msg["source_id"] = mesh.getNodeId();
@@ -549,11 +557,24 @@ void receivedCallback(uint32_t from, String & msg) {
   deserializeJson(doc, msg.c_str());
   const char* type = doc["type"];
 
+
   if (strcmp ("heartbeat", type) == 0) {
     Serial.printf("heartbeat message from : %u\n", from);
-  } else {
+  } else if (strcmp ("gm", type)) {
     read_message_queue.push_back( String(msg.c_str()) );
-    Serial.printf("Receive: [%u] msg= #### %s  ####\n", from, msg.c_str());
+    display_need_update = true;
+    Serial.printf("Group message Receive: [%u] msg= #### %s  ####\n", from, msg.c_str());
+  } else if (strcmp ("pm", type)) {
+    double receiver_id = doc["receiver_id"];
+    if (mesh.getNodeId() == receiver_id) {
+      read_message_queue.push_back( String(msg.c_str()) );
+      display_need_update = true;
+      Serial.printf("Private Message Receive: [%u] msg= #### %s  ####\n", from, msg.c_str());
+    }
+    else {
+      Serial.printf("Private Message Receive but not me: [%u] msg= #### %s  ####\n", from, msg.c_str());
+    }
+    
   }
 
   
