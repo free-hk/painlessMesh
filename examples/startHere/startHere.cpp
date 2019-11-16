@@ -19,10 +19,28 @@
 
 #define   VERSION       "1.1.6"
 
-// #define   OLED 1
-#define   TTGOLED 1
+// ----------------- WIFI Mesh Setting -------------------//
+// some gpio pin that is connected to an LED...
+// on my rig, this is 5, change to the right number of your LED.
+#define   LED             2       // GPIO number of connected LED, ON ESP-12 IS GPIO2
 
-#ifdef OLED
+#define   BLINK_PERIOD    3000 // milliseconds until cycle repeat
+#define   BLINK_DURATION  200  // milliseconds LED is on for
+
+#define   MESH_SSID       "FreeHK"
+#define   MESH_PASSWORD   "6q8DS9YQbr"
+#define   MESH_PORT       5555
+
+//------------------ define display Mode -----------------//
+#define OLED 1
+#define TTGOLED 2
+#define NO_DISPLAY 0
+#define DISPLAY_MODE TTGOLED
+
+//------------------ define display Mode end ------------//
+
+
+#if DISPLAY_MODE == OLED
   //Libraries for OLED Display
   #include <Wire.h>
   #include <Adafruit_GFX.h>
@@ -35,9 +53,7 @@
   #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
   Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RST);
-#endif
-
-#ifdef TTGOLED
+#elif DISPLAY_MODE == TTGOLED
   #include <TFT_eSPI.h>
   #include <SPI.h>
   #include "WiFi.h"
@@ -86,16 +102,7 @@ std::deque<String> heartbeat_message_queue = {};
 
 // https://gitlab.com/painlessMesh/painlessMesh
 
-// some gpio pin that is connected to an LED...
-// on my rig, this is 5, change to the right number of your LED.
-#define   LED             2       // GPIO number of connected LED, ON ESP-12 IS GPIO2
 
-#define   BLINK_PERIOD    3000 // milliseconds until cycle repeat
-#define   BLINK_DURATION  200  // milliseconds LED is on for
-
-#define   MESH_SSID       "FreeHK"
-#define   MESH_PASSWORD   "6q8DS9YQbr"
-#define   MESH_PORT       5555
 
 
 // Prototypes
@@ -113,6 +120,7 @@ void newConnectionCallback(uint32_t nodeId);
 void changedConnectionCallback(); 
 void nodeTimeAdjustedCallback(int32_t offset); 
 void delayReceivedCallback(uint32_t from, int32_t delay);
+void onButton();
 
 Scheduler     userScheduler; // to control your personal task
 painlessMesh  mesh;
@@ -129,17 +137,63 @@ bool onFlag = false;
 
 bool display_need_update = true;
 
-#ifdef OLED
+#if DISPLAY_MODE == OLED
+
 void initOLED();
 void loopOLEDDisplay();
-#endif
 
-#ifdef TTGOLED
+void initOLED() {
+  //reset OLED display via software
+  pinMode(OLED_RST, OUTPUT);
+  digitalWrite(OLED_RST, LOW);
+  delay(20);
+  digitalWrite(OLED_RST, HIGH);
+
+  //initialize OLED
+  Wire.begin(OLED_SDA, OLED_SCL);
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3c, false, false)) { // Address 0x3C for 128x32
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;); // Don't proceed, loop forever
+  }
+  
+  display.clearDisplay();
+  display.setTextColor(WHITE);
+  display.setTextSize(1);
+  display.setCursor(0,0);
+  display.print("");
+  display.display();
+}
+
+void loopOLEDDisplay() {
+  display.clearDisplay();
+  display.setCursor(0,0);
+  String out = "Free HK - ";
+  out += String(VERSION);
+  display.println(out);
+  display.setCursor(0,15);
+  display.setTextSize(1);
+
+  String node_id = "Node ID - ";
+  node_id += mesh.getNodeId();
+
+  display.print(node_id);
+
+  if (read_message_queue.size() > 0) {
+    String message = read_message_queue.back();
+    display.setCursor(0,30);
+    display.print(message);
+
+  }
+  // display.print("Counter:");
+  // display.setCursor(50,30);
+  // display.print(counter);      
+  display.display();
+}
+
+
+#elif DISPLAY_MODE == TTGOLED
 void initTTGOLED();
 void loopTTGOLEDDisplay();
-#endif
-
-#ifdef TTGOLED
 
 void initTTGOLED() {
   tft.init();
@@ -165,29 +219,33 @@ void loopTTGOLEDDisplay() {
     tft.setTextColor(TFT_WHITE);
     String out = "Free HK - WiFi Mesh v";
     out += String(VERSION);
-    tft.drawString(out,  tft.width() / 2, 20 );
+    tft.drawString(out,  tft.width() / 2, 10 );
 
     String node_id = "Node ID - ";
     node_id += mesh.getNodeId();
+    node_id += " ( ";
+    node_id += mesh.getNodeList().size();
+    node_id += " connected )";
 
-    tft.drawString(node_id,  tft.width() / 2, 40 );  
+    tft.drawString(node_id,  tft.width() / 2, 25 );  
     display_need_update = false;
 
     tft.setTextDatum(MC_DATUM);
     tft.setTextSize(2);
     tft.setTextColor(TFT_RED);
 
-    String unread_message = "";
-    unread_message += String(read_message_queue.size());
-    unread_message += " Unread Messages";
+    if (read_message_queue.size() > 0) {
+      String unread_message = "";
+      unread_message += String(read_message_queue.size());
+      unread_message += " Unread Messages";
 
-    tft.drawString(unread_message, tft.width() / 2, 100 );  
+      tft.drawString(unread_message, tft.width() / 2, 100 );  
+    }
 
   }
 }
+
 #endif
-
-
 
 #define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E" // UART service UUID
 #define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
@@ -241,41 +299,15 @@ class MyCallbacks: public BLECharacteristicCallbacks {
     }
 };
 
-#ifdef OLED
-void initOLED() {
-  //reset OLED display via software
-  pinMode(OLED_RST, OUTPUT);
-  digitalWrite(OLED_RST, LOW);
-  delay(20);
-  digitalWrite(OLED_RST, HIGH);
-
-  //initialize OLED
-  Wire.begin(OLED_SDA, OLED_SCL);
-  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3c, false, false)) { // Address 0x3C for 128x32
-    Serial.println(F("SSD1306 allocation failed"));
-    for(;;); // Don't proceed, loop forever
-  }
-  
-  display.clearDisplay();
-  display.setTextColor(WHITE);
-  display.setTextSize(1);
-  display.setCursor(0,0);
-  display.print("");
-  display.display();
-}
-#endif
-
 
 void setup() {
   Serial.begin(115200);
 
   pinMode(LED, OUTPUT);
 
-  #ifdef OLED
+  #if DISPLAY_MODE == OLED
   initOLED();
-  #endif
-
-  #ifdef TTGOLED
+  #elif DISPLAY_MODE == TTGOLED
   initTTGOLED();
   #endif
 
@@ -317,11 +349,11 @@ void setup() {
             (mesh.getNodeTime() % (BLINK_PERIOD*1000))/1000);
       }
   });
+
   userScheduler.addTask(blinkNoNodes);
   blinkNoNodes.enable();
 
   randomSeed(analogRead(A0));
-
 
   // Create the BLE Server
   pServer = BLEDevice::createServer();
@@ -361,44 +393,6 @@ void setup() {
   Serial.println("Waiting a client connection to notify...");
 }
 
-void onButton(){
-    String out = "Group Message : ";
-    out += String(millis() / 1000);
-    // Serial.println(out);
-    
-    sendGroupMessage(String("public"), out);
-    sendPrivateMessage(673514637, out);
-
-}
-
-#ifdef OLED
-void loopOLEDDisplay() {
-  display.clearDisplay();
-  display.setCursor(0,0);
-  String out = "Free HK - ";
-  out += String(VERSION);
-  display.println(out);
-  display.setCursor(0,15);
-  display.setTextSize(1);
-
-  String node_id = "Node ID - ";
-  node_id += mesh.getNodeId();
-
-  display.print(node_id);
-
-  if (read_message_queue.size() > 0) {
-    String message = read_message_queue.back();
-    display.setCursor(0,30);
-    display.print(message);
-
-  }
-  // display.print("Counter:");
-  // display.setCursor(50,30);
-  // display.print(counter);      
-  display.display();
-}
-#endif
-
 void loop() {
   mesh.update();
   digitalWrite(LED, !onFlag);
@@ -430,15 +424,22 @@ void loop() {
       onButton();
   }
   lastPinState = pinState;
-
   
-  #ifdef OLED
+  #if DISPLAY_MODE == OLED
   loopOLEDDisplay();
-  #endif
-
-  #ifdef TTGOLED
+  #elif DISPLAY_MODE == TTGOLED
   loopTTGOLEDDisplay();
   #endif
+}
+
+void onButton() {
+    String out = "Group Message : ";
+    out += String(millis() / 1000);
+    // Serial.println(out);
+    
+    sendGroupMessage(String("public"), out);
+    sendPrivateMessage(673514637, out);
+
 }
 
 void sendGroupMessage(String group_id, String message) {
@@ -604,6 +605,8 @@ void newConnectionCallback(uint32_t nodeId) {
  
   Serial.printf("--> startHere: New Connection, nodeId = %u\n", nodeId);
   Serial.printf("--> startHere: New Connection, %s\n", mesh.subConnectionJson(true).c_str());
+
+  display_need_update = true;
 }
 
 void changedConnectionCallback() {
@@ -625,6 +628,8 @@ void changedConnectionCallback() {
   }
   Serial.println();
   calc_delay = true;
+
+  display_need_update = true;
 }
 
 void nodeTimeAdjustedCallback(int32_t offset) {
