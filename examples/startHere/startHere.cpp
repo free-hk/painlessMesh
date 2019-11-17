@@ -262,7 +262,30 @@ class MyServerCallbacks: public BLEServerCallbacks {
 };
 
 void decodeMessage(String message) {
-  sendGroupMessage(String("public"), message);
+
+  DynamicJsonDocument doc(1024);
+  deserializeJson(doc, message.c_str());
+  const char* type = doc["type"];
+
+  if (strcmp ("gm", type) == 0) {
+    const char* group_id = doc["group_id"];
+    const char* to_message = doc["message"];
+    
+    Serial.printf("Prepare Send Group message : msg= #### %s ####\n", to_message);
+    sendGroupMessage(String(group_id), String(to_message));
+    Serial.printf("Prepare Send Group message done");
+
+  } else if (strcmp ("pm", type) == 0) {
+    
+    double receiver_id = doc["receiver_id"]);
+    const char* to_message = doc["message"];
+    Serial.printf("Prepare send Private Message : [%u] msg= #### %s  ####\n", receiver_id, to_message);
+    sendPrivateMessage(receiver_id, String(to_message));
+    Serial.printf("Private Message Receive but not me: from : [%u] to : [%u] msg= #### %s  ####\n", from, doc["receiver_id"],  msg.c_str());
+    
+  } else {
+    sendGroupMessage(String("public"), message);
+  }
 }
 
 class MyCallbacks: public BLECharacteristicCallbacks {
