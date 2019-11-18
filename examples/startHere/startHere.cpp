@@ -17,7 +17,7 @@
 #include <BLE2902.h>
 #include <deque>
 
-#define   VERSION       "1.1.6"
+#define   VERSION       "1.1.8"
 
 // ----------------- WIFI Mesh Setting -------------------//
 // some gpio pin that is connected to an LED...
@@ -111,8 +111,8 @@ void sendGroupMessage(std::string group_id, std::string message);
 void sendGroupMessage(String group_id, String message);
 void sendPrivateMessage(double receiver_id, String message);
 void sendPrivateMessage(double receiver_id, std::string message);
-void sendPingMessage(std::string receiver_id);
-void sendPongMessage(std::string receiver_id);
+void sendPingMessage(double receiver_id);
+void sendPongMessage(double receiver_id);
 void sendBroadcastMessage(String message, bool includeSelf);
 void sendHeartbeat(); 
 void receivedCallback(uint32_t from, String & msg);
@@ -264,7 +264,14 @@ class MyServerCallbacks: public BLEServerCallbacks {
 void decodeMessage(String message) {
 
   DynamicJsonDocument doc(1024);
-  deserializeJson(doc, message.c_str());
+  DeserializationError error = deserializeJson(doc, message.c_str());
+  if (error)
+  {
+    Serial.printf("JSON Format decode error, fall back to public message\n\n");
+    sendGroupMessage(String("public"), message);
+    return;
+  }
+
   const char* type = doc["type"];
 
   if (strcmp ("gm", type) == 0) {
@@ -277,13 +284,21 @@ void decodeMessage(String message) {
 
   } else if (strcmp ("pm", type) == 0) {
     
-    double receiver_id = doc["receiver_id"]);
+    double receiver_id = doc["receiver_id"];
     const char* to_message = doc["message"];
     Serial.printf("Prepare send Private Message : [%u] msg= #### %s  ####\n", receiver_id, to_message);
     sendPrivateMessage(receiver_id, String(to_message));
-    Serial.printf("Private Message Receive but not me: from : [%u] to : [%u] msg= #### %s  ####\n", from, doc["receiver_id"],  msg.c_str());
+    Serial.printf("Prepare send Private Message done\n");
     
-  } else {
+  } else if (strcmp ("ping", type) == 0) {
+    
+    double receiver_id = doc["receiver_id"];
+    Serial.printf("Prepare send Ping Message : [%u] \n", receiver_id);
+    sendPingMessage(receiver_id);
+    Serial.printf("Prepare send Private Message done\n");
+    
+  }
+  else {
     sendGroupMessage(String("public"), message);
   }
 }
@@ -296,15 +311,6 @@ class MyCallbacks: public BLECharacteristicCallbacks {
 
         String messageStr = String(rxValue.c_str());
         decodeMessage(messageStr);
-        // sendGroupMessage(rxValue, false);
-
-        // Serial.println("*********");
-        // Serial.print("Received Value: ");
-        // for (int i = 0; i < rxValue.length(); i++)
-        //   Serial.print(rxValue[i]);
-
-        // Serial.println();
-        // Serial.println("*********");
       }
     }
 
@@ -456,13 +462,15 @@ void loop() {
 }
 
 void onButton() {
-    String out = "Group Message : ";
-    out += String(millis() / 1000);
-    // Serial.println(out);
-    
-    sendGroupMessage(String("public"), out);
-    sendPrivateMessage(673514637, out);
 
+    // send group message
+    decodeMessage("{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": \"abcd\"}");
+
+    // send private message to 673514289
+    decodeMessage("{\"type\": \"pm\",\"receiver_id\": \"673515565\",  \"message\": \"abcd\"}");
+
+    decodeMessage("{\"type\": \"ping\",\"receiver_id\": \"673515565\"}");
+    decodeMessage("a");
 }
 
 void sendGroupMessage(String group_id, String message) {
@@ -528,12 +536,12 @@ void sendPrivateMessage(double receiver_id, std::string message) {
   sendBroadcastMessage(str, false);
 }
 
-void sendPingMessage(std::string receiver_id) {
+void sendPingMessage(double receiver_id) {
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
   
   msg["type"] = "ping";
-  msg["receiver_id"] = String(receiver_id.c_str());
+  msg["receiver_id"] = receiver_id;
   msg["source_id"] = mesh.getNodeId();
 
   String str;
@@ -542,12 +550,12 @@ void sendPingMessage(std::string receiver_id) {
   sendBroadcastMessage(str, false);
 }
 
-void sendPongMessage(std::string receiver_id) {
+void sendPongMessage(double receiver_id) {
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
   
   msg["type"] = "pong";
-  msg["receiver_id"] = String(receiver_id.c_str());
+  msg["receiver_id"] = receiver_id;
   msg["source_id"] = mesh.getNodeId();
 
   String str;
@@ -615,9 +623,23 @@ void receivedCallback(uint32_t from, String & msg) {
     else {
       Serial.printf("Private Message Receive but not me: from : [%u] to : [%u] msg= #### %s  ####\n", from, doc["receiver_id"],  msg.c_str());
     }
-  }
+  } else if (strcmp ("ping", type) == 0) {
 
-  
+    if (mesh.getNodeId() == doc["receiver_id"]) {
+      read_message_queue.push_back( String(msg.c_str()) );
+      display_need_update = true;
+      Serial.printf("Ping Message Receive: [%u] \n", from);
+      sendPongMessage(from);
+      Serial.printf("Pong Message Send: [%u] \n", from);
+    }
+  } else if (strcmp ("pong", type) == 0) {
+    Serial.printf("Pong Message Receive - before filter");
+    if (mesh.getNodeId() == doc["receiver_id"]) {
+      read_message_queue.push_back( String(msg.c_str()) );
+      display_need_update = true;
+      Serial.printf("Pong Message Receive: [%u] \n", from);
+    }
+  }
 }
 
 void newConnectionCallback(uint32_t nodeId) {
