@@ -17,7 +17,9 @@
 #include <BLE2902.h>
 #include <deque>
 
-#define   VERSION       "1.1.8"
+#include "Button2.h";
+
+#define   VERSION       "1.1.10"
 
 // ----------------- WIFI Mesh Setting -------------------//
 // some gpio pin that is connected to an LED...
@@ -53,12 +55,15 @@
   #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
   Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RST);
+
+  #define BUTTON_A_PIN  0
+  #define BUTTON_A_PIN  -1
+
 #elif DISPLAY_MODE == TTGOLED
   #include <TFT_eSPI.h>
   #include <SPI.h>
   #include "WiFi.h"
   #include <Wire.h>
-  #include <Button2.h>
   #include "esp_adc_cal.h"
   //#include "bmp.h"
 
@@ -82,14 +87,17 @@
   #define BUTTON_1        35
   #define BUTTON_2        0
 
+  #define BUTTON_A_PIN  0
+  #define BUTTON_B_PIN  35
+
   TFT_eSPI tft = TFT_eSPI(135, 240); // Invoke custom library
-  Button2 btn1(BUTTON_1);
-  Button2 btn2(BUTTON_2);
 
   char buff[512];
   int vref = 1100;
-  int btnCick = false;
 #endif
+
+Button2 buttonA = Button2(BUTTON_A_PIN);
+// Button2 buttonB = Button2(BUTTON_B_PIN);
 
 BLEServer *pServer = NULL;
 BLECharacteristic * pTxCharacteristic;
@@ -328,9 +336,41 @@ class MyCallbacks: public BLECharacteristicCallbacks {
     }
 };
 
+void tapHandler(Button2& btn) {
+    switch (btn.getClickType()) {
+        case SINGLE_CLICK:
+            Serial.print("single \n\n");
+            decodeMessage("{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": \"abcd\"}");
+            
+            break;
+        case DOUBLE_CLICK:
+            Serial.print("double \n\n");
+            decodeMessage("{\"type\": \"pm\",\"receiver_id\": \"673515565\",  \"message\": \"abcd\"}");
+
+            break;
+        case TRIPLE_CLICK:
+            Serial.print("triple \n\n");
+            decodeMessage("{\"type\": \"ping\",\"receiver_id\": \"673515565\"}");
+
+            break;
+        case LONG_CLICK:
+            Serial.print("long \n\n");
+            decodeMessage("a");
+            break;
+    }
+    Serial.print("click");
+    Serial.print(" (");
+    Serial.print(btn.getNumberOfClicks());    
+    Serial.println(")");
+}
 
 void setup() {
   Serial.begin(115200);
+
+  buttonA.setClickHandler(tapHandler);
+  buttonA.setLongClickHandler(tapHandler);
+  buttonA.setDoubleClickHandler(tapHandler);
+  buttonA.setTripleClickHandler(tapHandler);
 
   pinMode(LED, OUTPUT);
 
@@ -426,6 +466,8 @@ void loop() {
   mesh.update();
   digitalWrite(LED, !onFlag);
 
+  buttonA.loop();
+
   if (deviceConnected) {
         txValue = read_message_queue.size();
         pTxCharacteristic->setValue(&txValue, 1);
@@ -446,14 +488,6 @@ void loop() {
       oldDeviceConnected = deviceConnected;
   }
 
-  // setup button event
-  static uint8_t lastPinState = 1;
-  uint8_t pinState = digitalRead(0);
-  if(!pinState && lastPinState){
-      onButton();
-  }
-  lastPinState = pinState;
-  
   #if DISPLAY_MODE == OLED
   loopOLEDDisplay();
   #elif DISPLAY_MODE == TTGOLED
