@@ -128,7 +128,6 @@ void newConnectionCallback(uint32_t nodeId);
 void changedConnectionCallback(); 
 void nodeTimeAdjustedCallback(int32_t offset); 
 void delayReceivedCallback(uint32_t from, int32_t delay);
-void onButton();
 
 Scheduler     userScheduler; // to control your personal task
 painlessMesh  mesh;
@@ -493,18 +492,6 @@ void loop() {
   #elif DISPLAY_MODE == TTGOLED
   loopTTGOLEDDisplay();
   #endif
-}
-
-void onButton() {
-
-    // send group message
-    decodeMessage("{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": \"abcd\"}");
-
-    // send private message to 673514289
-    decodeMessage("{\"type\": \"pm\",\"receiver_id\": \"673515565\",  \"message\": \"abcd\"}");
-
-    decodeMessage("{\"type\": \"ping\",\"receiver_id\": \"673515565\"}");
-    decodeMessage("a");
 }
 
 void sendGroupMessage(String group_id, String message) {
