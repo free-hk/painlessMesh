@@ -17,9 +17,9 @@
 #include <BLE2902.h>
 #include <deque>
 
-#include "Button2.h";
+#include "Button2.h"
 
-#define   VERSION       "1.1.10"
+#define   VERSION       "1.1.11"
 
 // ----------------- WIFI Mesh Setting -------------------//
 // some gpio pin that is connected to an LED...
@@ -117,10 +117,10 @@ std::deque<String> heartbeat_message_queue = {};
 void decodeMessage(String message);
 void sendGroupMessage(std::string group_id, std::string message);
 void sendGroupMessage(String group_id, String message);
-void sendPrivateMessage(double receiver_id, String message);
-void sendPrivateMessage(double receiver_id, std::string message);
-void sendPingMessage(double receiver_id);
-void sendPongMessage(double receiver_id);
+void sendPrivateMessage(uint32_t receiver_id, String message);
+void sendPrivateMessage(uint32_t receiver_id, std::string message);
+void sendPingMessage(uint32_t receiver_id);
+void sendPongMessage(uint32_t receiver_id);
 void sendBroadcastMessage(String message, bool includeSelf);
 void sendHeartbeat(); 
 void receivedCallback(uint32_t from, String & msg);
@@ -291,7 +291,7 @@ void decodeMessage(String message) {
 
   } else if (strcmp ("pm", type) == 0) {
     
-    double receiver_id = doc["receiver_id"];
+    uint32_t receiver_id = doc["receiver_id"];
     const char* to_message = doc["message"];
     Serial.printf("Prepare send Private Message : [%u] msg= #### %s  ####\n", receiver_id, to_message);
     sendPrivateMessage(receiver_id, String(to_message));
@@ -299,7 +299,7 @@ void decodeMessage(String message) {
     
   } else if (strcmp ("ping", type) == 0) {
     
-    double receiver_id = doc["receiver_id"];
+    uint32_t receiver_id = doc["receiver_id"];
     Serial.printf("Prepare send Ping Message : [%u] \n", receiver_id);
     sendPingMessage(receiver_id);
     Serial.printf("Prepare send Private Message done\n");
@@ -344,12 +344,12 @@ void tapHandler(Button2& btn) {
             break;
         case DOUBLE_CLICK:
             Serial.print("double \n\n");
-            decodeMessage("{\"type\": \"pm\",\"receiver_id\": \"673515565\",  \"message\": \"abcd\"}");
+            decodeMessage("{\"type\": \"pm\",\"receiver_id\": 673516837,  \"message\": \"abcd\"}");
 
             break;
         case TRIPLE_CLICK:
             Serial.print("triple \n\n");
-            decodeMessage("{\"type\": \"ping\",\"receiver_id\": \"673515565\"}");
+            decodeMessage("{\"type\": \"ping\",\"receiver_id\": 673516837}");
 
             break;
         case LONG_CLICK:
@@ -526,7 +526,7 @@ void sendGroupMessage(std::string group_id, std::string message) {
   sendBroadcastMessage(str, false);
 }
 
-void sendPrivateMessage(double receiver_id, String message) {
+void sendPrivateMessage(uint32_t receiver_id, String message) {
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
   
@@ -541,7 +541,7 @@ void sendPrivateMessage(double receiver_id, String message) {
   sendBroadcastMessage(str, false);
 }
 
-void sendPrivateMessage(double receiver_id, std::string message) {
+void sendPrivateMessage(uint32_t receiver_id, std::string message) {
   
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
@@ -554,15 +554,17 @@ void sendPrivateMessage(double receiver_id, std::string message) {
   String str;
   serializeJson(msg, str);
   
+  Serial.printf("Send value %s\n", str.c_str());
+  
   sendBroadcastMessage(str, false);
 }
 
-void sendPingMessage(double receiver_id) {
+void sendPingMessage(uint32_t receiver_id) {
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
   
   msg["type"] = "ping";
-  msg["receiver_id"] = receiver_id;
+  msg["receiver_id"] = serialized(String(receiver_id));
   msg["source_id"] = mesh.getNodeId();
 
   String str;
@@ -571,7 +573,7 @@ void sendPingMessage(double receiver_id) {
   sendBroadcastMessage(str, false);
 }
 
-void sendPongMessage(double receiver_id) {
+void sendPongMessage(uint32_t receiver_id) {
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
   
