@@ -97,7 +97,7 @@
 #endif
 
 Button2 buttonA = Button2(BUTTON_A_PIN);
-// Button2 buttonB = Button2(BUTTON_B_PIN);
+
 
 BLEServer *pServer = NULL;
 BLECharacteristic * pTxCharacteristic;
@@ -252,6 +252,8 @@ void loopTTGOLEDDisplay() {
   }
 }
 
+Button2 buttonB = Button2(BUTTON_B_PIN);
+
 #endif
 
 #define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E" // UART service UUID
@@ -338,22 +340,26 @@ class MyCallbacks: public BLECharacteristicCallbacks {
 void tapHandler(Button2& btn) {
     switch (btn.getClickType()) {
         case SINGLE_CLICK:
-            Serial.print("single \n\n");
+            Serial.print("--------------------\n");
+            Serial.print("Button A single \n\n");
             decodeMessage("{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": \"abcd\"}");
             
             break;
         case DOUBLE_CLICK:
-            Serial.print("double \n\n");
+            Serial.print("--------------------\n");
+            Serial.print("Button A double \n\n");
             decodeMessage("{\"type\": \"pm\",\"receiver_id\": 673516837,  \"message\": \"abcd\"}");
 
             break;
         case TRIPLE_CLICK:
-            Serial.print("triple \n\n");
+            Serial.print("--------------------\n");
+            Serial.print("Button A triple \n\n");
             decodeMessage("{\"type\": \"ping\",\"receiver_id\": 673516837}");
 
             break;
         case LONG_CLICK:
-            Serial.print("long \n\n");
+            Serial.print("--------------------\n");
+            Serial.print("Button A long \n\n");
             decodeMessage("a");
             break;
     }
@@ -363,6 +369,39 @@ void tapHandler(Button2& btn) {
     Serial.println(")");
 }
 
+void tapButtonBHandler(Button2& btn) {
+    switch (btn.getClickType()) {
+        case SINGLE_CLICK:
+            Serial.print("--------------------\n");
+            Serial.print("Button B single \n\n");
+            decodeMessage("{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": \"abcd\"}");
+            
+            break;
+        case DOUBLE_CLICK:
+        Serial.print("--------------------\n");
+            Serial.print("Button B double \n\n");
+            decodeMessage("{\"type\": \"pm\",\"receiver_id\": 673516837,  \"message\": \"abcd\"}");
+
+            break;
+        case TRIPLE_CLICK:
+            Serial.print("--------------------\n");
+            Serial.print("Button B triple \n\n");
+            decodeMessage("{\"type\": \"ping\",\"receiver_id\": 673516837}");
+
+            break;
+        case LONG_CLICK:
+            Serial.print("--------------------\n");
+            Serial.print("Button B long \n\n");
+            decodeMessage("a");
+            break;
+    }
+    Serial.print("click");
+    Serial.print(" (");
+    Serial.print(btn.getNumberOfClicks());    
+    Serial.println(")");
+}
+
+
 void setup() {
   Serial.begin(115200);
 
@@ -371,12 +410,18 @@ void setup() {
   buttonA.setDoubleClickHandler(tapHandler);
   buttonA.setTripleClickHandler(tapHandler);
 
-  pinMode(LED, OUTPUT);
+  // pinMode(LED, OUTPUT);
 
   #if DISPLAY_MODE == OLED
   initOLED();
   #elif DISPLAY_MODE == TTGOLED
   initTTGOLED();
+
+  buttonB.setClickHandler(tapButtonBHandler);
+  buttonB.setLongClickHandler(tapButtonBHandler);
+  buttonB.setDoubleClickHandler(tapButtonBHandler);
+  buttonB.setTripleClickHandler(tapButtonBHandler);
+  
   #endif
 
   mesh.setDebugMsgTypes( ERROR | DEBUG| CONNECTION | SYNC );
@@ -488,9 +533,12 @@ void loop() {
   }
 
   #if DISPLAY_MODE == OLED
-  loopOLEDDisplay();
+    loopOLEDDisplay();
+    buttonA.loop();
   #elif DISPLAY_MODE == TTGOLED
-  loopTTGOLEDDisplay();
+    loopTTGOLEDDisplay();
+    buttonA.loop();
+    buttonB.loop();
   #endif
 }
 
