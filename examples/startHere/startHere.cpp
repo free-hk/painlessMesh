@@ -174,7 +174,7 @@ void initOLED() {
 void loopOLEDDisplay() {
   display.clearDisplay();
   display.setCursor(0,0);
-  String out = "Free HK - ";
+  String out = "Mesh Net - ";
   out += String(VERSION);
   display.println(out);
   display.setCursor(0,15);
@@ -224,7 +224,7 @@ void loopTTGOLEDDisplay() {
 
     tft.setTextSize(1);
     tft.setTextColor(TFT_WHITE);
-    String out = "Free HK - WiFi Mesh v";
+    String out = "WiFi Mesh v";
     out += String(VERSION);
     tft.drawString(out,  tft.width() / 2, 10 );
 
