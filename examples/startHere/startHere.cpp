@@ -17,7 +17,9 @@
 #include <BLE2902.h>
 #include <deque>
 
-#define   VERSION       "1.1.8"
+#include "Button2.h"
+
+#define   VERSION       "1.1.11"
 
 // ----------------- WIFI Mesh Setting -------------------//
 // some gpio pin that is connected to an LED...
@@ -53,12 +55,15 @@
   #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
   Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RST);
+
+  #define BUTTON_A_PIN  0
+  #define BUTTON_A_PIN  -1
+
 #elif DISPLAY_MODE == TTGOLED
   #include <TFT_eSPI.h>
   #include <SPI.h>
   #include "WiFi.h"
   #include <Wire.h>
-  #include <Button2.h>
   #include "esp_adc_cal.h"
   //#include "bmp.h"
 
@@ -82,14 +87,17 @@
   #define BUTTON_1        35
   #define BUTTON_2        0
 
+  #define BUTTON_A_PIN  0
+  #define BUTTON_B_PIN  35
+
   TFT_eSPI tft = TFT_eSPI(135, 240); // Invoke custom library
-  Button2 btn1(BUTTON_1);
-  Button2 btn2(BUTTON_2);
 
   char buff[512];
   int vref = 1100;
-  int btnCick = false;
 #endif
+
+Button2 buttonA = Button2(BUTTON_A_PIN);
+
 
 BLEServer *pServer = NULL;
 BLECharacteristic * pTxCharacteristic;
@@ -109,10 +117,10 @@ std::deque<String> heartbeat_message_queue = {};
 void decodeMessage(String message);
 void sendGroupMessage(std::string group_id, std::string message);
 void sendGroupMessage(String group_id, String message);
-void sendPrivateMessage(double receiver_id, String message);
-void sendPrivateMessage(double receiver_id, std::string message);
-void sendPingMessage(double receiver_id);
-void sendPongMessage(double receiver_id);
+void sendPrivateMessage(uint32_t receiver_id, String message);
+void sendPrivateMessage(uint32_t receiver_id, std::string message);
+void sendPingMessage(uint32_t receiver_id);
+void sendPongMessage(uint32_t receiver_id);
 void sendBroadcastMessage(String message, bool includeSelf);
 void sendHeartbeat(); 
 void receivedCallback(uint32_t from, String & msg);
@@ -120,7 +128,6 @@ void newConnectionCallback(uint32_t nodeId);
 void changedConnectionCallback(); 
 void nodeTimeAdjustedCallback(int32_t offset); 
 void delayReceivedCallback(uint32_t from, int32_t delay);
-void onButton();
 
 Scheduler     userScheduler; // to control your personal task
 painlessMesh  mesh;
@@ -167,7 +174,7 @@ void initOLED() {
 void loopOLEDDisplay() {
   display.clearDisplay();
   display.setCursor(0,0);
-  String out = "Free HK - ";
+  String out = "Mesh Net - ";
   out += String(VERSION);
   display.println(out);
   display.setCursor(0,15);
@@ -217,7 +224,7 @@ void loopTTGOLEDDisplay() {
 
     tft.setTextSize(1);
     tft.setTextColor(TFT_WHITE);
-    String out = "Free HK - WiFi Mesh v";
+    String out = "WiFi Mesh v";
     out += String(VERSION);
     tft.drawString(out,  tft.width() / 2, 10 );
 
@@ -244,6 +251,8 @@ void loopTTGOLEDDisplay() {
 
   }
 }
+
+Button2 buttonB = Button2(BUTTON_B_PIN);
 
 #endif
 
@@ -284,7 +293,7 @@ void decodeMessage(String message) {
 
   } else if (strcmp ("pm", type) == 0) {
     
-    double receiver_id = doc["receiver_id"];
+    uint32_t receiver_id = doc["receiver_id"];
     const char* to_message = doc["message"];
     Serial.printf("Prepare send Private Message : [%u] msg= #### %s  ####\n", receiver_id, to_message);
     sendPrivateMessage(receiver_id, String(to_message));
@@ -292,7 +301,7 @@ void decodeMessage(String message) {
     
   } else if (strcmp ("ping", type) == 0) {
     
-    double receiver_id = doc["receiver_id"];
+    uint32_t receiver_id = doc["receiver_id"];
     Serial.printf("Prepare send Ping Message : [%u] \n", receiver_id);
     sendPingMessage(receiver_id);
     Serial.printf("Prepare send Private Message done\n");
@@ -328,16 +337,91 @@ class MyCallbacks: public BLECharacteristicCallbacks {
     }
 };
 
+void tapHandler(Button2& btn) {
+    switch (btn.getClickType()) {
+        case SINGLE_CLICK:
+            Serial.print("--------------------\n");
+            Serial.print("Button A single \n\n");
+            decodeMessage("{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": \"abcd\"}");
+            
+            break;
+        case DOUBLE_CLICK:
+            Serial.print("--------------------\n");
+            Serial.print("Button A double \n\n");
+            decodeMessage("{\"type\": \"pm\",\"receiver_id\": 673516837,  \"message\": \"abcd\"}");
+
+            break;
+        case TRIPLE_CLICK:
+            Serial.print("--------------------\n");
+            Serial.print("Button A triple \n\n");
+            decodeMessage("{\"type\": \"ping\",\"receiver_id\": 673516837}");
+
+            break;
+        case LONG_CLICK:
+            Serial.print("--------------------\n");
+            Serial.print("Button A long \n\n");
+            decodeMessage("a");
+            break;
+    }
+    Serial.print("click");
+    Serial.print(" (");
+    Serial.print(btn.getNumberOfClicks());    
+    Serial.println(")");
+}
+
+void tapButtonBHandler(Button2& btn) {
+    switch (btn.getClickType()) {
+        case SINGLE_CLICK:
+            Serial.print("--------------------\n");
+            Serial.print("Button B single \n\n");
+            decodeMessage("{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": \"abcd\"}");
+            
+            break;
+        case DOUBLE_CLICK:
+        Serial.print("--------------------\n");
+            Serial.print("Button B double \n\n");
+            decodeMessage("{\"type\": \"pm\",\"receiver_id\": 673516837,  \"message\": \"abcd\"}");
+
+            break;
+        case TRIPLE_CLICK:
+            Serial.print("--------------------\n");
+            Serial.print("Button B triple \n\n");
+            decodeMessage("{\"type\": \"ping\",\"receiver_id\": 673516837}");
+
+            break;
+        case LONG_CLICK:
+            Serial.print("--------------------\n");
+            Serial.print("Button B long \n\n");
+            decodeMessage("a");
+            break;
+    }
+    Serial.print("click");
+    Serial.print(" (");
+    Serial.print(btn.getNumberOfClicks());    
+    Serial.println(")");
+}
+
 
 void setup() {
   Serial.begin(115200);
 
-  pinMode(LED, OUTPUT);
+  buttonA.setClickHandler(tapHandler);
+  buttonA.setLongClickHandler(tapHandler);
+  buttonA.setDoubleClickHandler(tapHandler);
+  buttonA.setTripleClickHandler(tapHandler);
+
+  // pinMode(LED, OUTPUT);
 
   #if DISPLAY_MODE == OLED
   initOLED();
   #elif DISPLAY_MODE == TTGOLED
   initTTGOLED();
+
+  buttonB.setClickHandler(tapButtonBHandler);
+  buttonB.setLongClickHandler(tapButtonBHandler);
+  buttonB.setDoubleClickHandler(tapButtonBHandler);
+  buttonB.setTripleClickHandler(tapButtonBHandler);
+  
   #endif
 
   mesh.setDebugMsgTypes( ERROR | DEBUG| CONNECTION | SYNC );
@@ -426,6 +510,8 @@ void loop() {
   mesh.update();
   digitalWrite(LED, !onFlag);
 
+  buttonA.loop();
+
   if (deviceConnected) {
         txValue = read_message_queue.size();
         pTxCharacteristic->setValue(&txValue, 1);
@@ -446,31 +532,14 @@ void loop() {
       oldDeviceConnected = deviceConnected;
   }
 
-  // setup button event
-  static uint8_t lastPinState = 1;
-  uint8_t pinState = digitalRead(0);
-  if(!pinState && lastPinState){
-      onButton();
-  }
-  lastPinState = pinState;
-  
   #if DISPLAY_MODE == OLED
-  loopOLEDDisplay();
+    loopOLEDDisplay();
+    buttonA.loop();
   #elif DISPLAY_MODE == TTGOLED
-  loopTTGOLEDDisplay();
+    loopTTGOLEDDisplay();
+    buttonA.loop();
+    buttonB.loop();
   #endif
-}
-
-void onButton() {
-
-    // send group message
-    decodeMessage("{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": \"abcd\"}");
-
-    // send private message to 673514289
-    decodeMessage("{\"type\": \"pm\",\"receiver_id\": \"673515565\",  \"message\": \"abcd\"}");
-
-    decodeMessage("{\"type\": \"ping\",\"receiver_id\": \"673515565\"}");
-    decodeMessage("a");
 }
 
 void sendGroupMessage(String group_id, String message) {
@@ -505,7 +574,7 @@ void sendGroupMessage(std::string group_id, std::string message) {
   sendBroadcastMessage(str, false);
 }
 
-void sendPrivateMessage(double receiver_id, String message) {
+void sendPrivateMessage(uint32_t receiver_id, String message) {
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
   
@@ -520,7 +589,7 @@ void sendPrivateMessage(double receiver_id, String message) {
   sendBroadcastMessage(str, false);
 }
 
-void sendPrivateMessage(double receiver_id, std::string message) {
+void sendPrivateMessage(uint32_t receiver_id, std::string message) {
   
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
@@ -533,15 +602,17 @@ void sendPrivateMessage(double receiver_id, std::string message) {
   String str;
   serializeJson(msg, str);
   
+  Serial.printf("Send value %s\n", str.c_str());
+  
   sendBroadcastMessage(str, false);
 }
 
-void sendPingMessage(double receiver_id) {
+void sendPingMessage(uint32_t receiver_id) {
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
   
   msg["type"] = "ping";
-  msg["receiver_id"] = receiver_id;
+  msg["receiver_id"] = serialized(String(receiver_id));
   msg["source_id"] = mesh.getNodeId();
 
   String str;
@@ -550,7 +621,7 @@ void sendPingMessage(double receiver_id) {
   sendBroadcastMessage(str, false);
 }
 
-void sendPongMessage(double receiver_id) {
+void sendPongMessage(uint32_t receiver_id) {
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
   
