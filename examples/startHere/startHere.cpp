@@ -9,6 +9,9 @@
 //
 //************************************************************
 #include <Arduino.h>
+
+#define PROG_VERSION "0.2" // Don't change this!
+
 #include <painlessMesh.h>
 
 #include <BLEDevice.h>
@@ -91,6 +94,8 @@
 
   #define BUTTON_A_PIN  0
   #define BUTTON_B_PIN  35
+  
+  int ledBacklight = 80; // Initial TFT backlight intensity on a scale of 0 to 255. Initial value is 80.
 
   TFT_eSPI tft = TFT_eSPI(135, 240); // Invoke custom library
 
@@ -98,7 +103,7 @@
   int vref = 1100;
 
   // Menu
-  // #include <menu.h>
+  #include <menu.h>
   #include <menuIO/serialIO.h>
   #include <menuIO/TFT_eSPIOut.h>
   #include <menuIO/esp8266Out.h>//must include this even if not doing web output...
@@ -108,6 +113,171 @@
   const int pwmFreq = 5000;
   const int pwmResolution = 8;
   const int pwmLedChannelTFT = 0;
+  char* constMEM hexDigit MEMMODE="0123456789ABCDEF";
+  char* constMEM hexNr[] MEMMODE={"0","x",hexDigit,hexDigit};
+  char buf1[]="0x11";
+
+  painlessMesh  mesh;
+
+  //customizing a prompt look!
+  //by extending the prompt class
+  // class altPrompt:public prompt {
+  // public:
+  //   altPrompt(constMEM promptShadow& p):prompt(p) {}
+  //   Used printTo(navRoot &root,bool sel,menuOut& out, idx_t idx,idx_t len,idx_t) override {
+  //     return out.printRaw(F("special prompt!"),len);;
+  //   }
+  // };
+
+  MENU(mainMenu,"FreeHK - WiFi Mesh",doNothing,noEvent,wrapStyle
+    ,FIELD(ledBacklight,"Backlight: ","",0,255,10,5,doNothing,noEvent,wrapStyle) // Menu option to set the intensity of the backlight of the screen.
+    ,OP("Send Group Message",doNothing,noEvent)
+    ,OP("Send PM Message",doNothing,noEvent)
+    ,OP("Send Ping Message",doNothing,noEvent)
+    ,OP("Settings",doNothing,noEvent)
+    ,EXIT("<Home")
+  );
+
+  // define menu colors --------------------------------------------------------
+  //  {{disabled normal,disabled selected},{enabled normal,enabled selected, enabled editing}}
+  //monochromatic color table`'/.
+
+
+  #define Black RGB565(0,0,0)
+  #define Red	RGB565(255,0,0)
+  #define Green RGB565(0,255,0)
+  #define Blue RGB565(0,0,255)
+  #define Gray RGB565(128,128,128)
+  #define LighterRed RGB565(255,150,150)
+  #define LighterGreen RGB565(150,255,150)
+  #define LighterBlue RGB565(150,150,255)
+  #define DarkerRed RGB565(150,0,0)
+  #define DarkerGreen RGB565(0,150,0)
+  #define DarkerBlue RGB565(0,0,150)
+  #define Cyan RGB565(0,255,255)
+  #define Magenta RGB565(255,0,255)
+  #define Yellow RGB565(255,255,0)
+  #define White RGB565(255,255,255)
+
+  const colorDef<uint16_t> colors[6] MEMMODE={
+    {
+      {
+        (uint16_t)Black,
+        (uint16_t)Black
+      },
+      {
+        (uint16_t)Black,
+        (uint16_t)DarkerBlue,
+        (uint16_t)DarkerBlue
+      }
+    },//bgColor
+    {
+      {
+        (uint16_t)Gray,
+        (uint16_t)Gray
+      },
+      {
+        (uint16_t)White,
+        (uint16_t)White,
+        (uint16_t)White
+      }
+    },//fgColor
+    {
+      {
+        (uint16_t)White,
+        (uint16_t)Black
+      },
+      {
+        (uint16_t)Yellow,
+        (uint16_t)Yellow,
+        (uint16_t)Red
+      }
+    },//valColor
+    {
+      {
+        (uint16_t)White,
+        (uint16_t)Black
+      },
+      {
+        (uint16_t)White,
+        (uint16_t)Yellow,
+        (uint16_t)Yellow
+      }
+    },//unitColor
+    {
+      {
+        (uint16_t)White,
+        (uint16_t)Gray
+      },
+      {
+        (uint16_t)Black,
+        (uint16_t)Blue,
+        (uint16_t)White
+      }
+    },//cursorColor
+    {
+      {
+        (uint16_t)White,
+        (uint16_t)Yellow
+      },
+      {
+        (uint16_t)DarkerRed,
+        (uint16_t)White,
+        (uint16_t)White
+      }
+    },//titleColor
+  };
+
+  #define MAX_DEPTH 5
+
+  serialIn serial(Serial);
+
+  // MENU_INPUTS(in,&serial);its single, no need to `chainStream`
+
+  // define serial output device
+  idx_t serialTops[MAX_DEPTH]={0};
+  serialOut outSerial(Serial,serialTops);
+
+
+  #define GFX_WIDTH 240
+  #define GFX_HEIGHT 135
+  #define fontW 12
+  #define fontH 18
+
+  constMEM panel panels[] MEMMODE = {{0, 0, GFX_WIDTH / fontW, GFX_HEIGHT / fontH}};
+  navNode* navNodes[sizeof(panels) / sizeof(panel)]; //navNodes to store navigation status
+  panelsList pList(panels, navNodes, 1); //a list of panels and nodes
+  idx_t eSpiTops[MAX_DEPTH]={0};
+  TFT_eSPIOut eSpiOut(tft,colors,eSpiTops,pList,fontW,fontH+1);
+  menuOut* constMEM outputs[] MEMMODE={&outSerial,&eSpiOut};//list of output devices
+  outputsList out(outputs,sizeof(outputs)/sizeof(menuOut*));//outputs list controller
+
+  NAVROOT(nav,mainMenu,MAX_DEPTH,serial,out);
+
+  unsigned long idleTimestamp = millis();
+
+  //when menu is suspended
+  result idle(menuOut& o,idleEvent e) {
+    if (e==idling) {
+        // Show the idle message once
+        int xpos = tft.width() / 2; // Half the screen width
+        tft.fillScreen(Black);
+
+        tft.setTextSize(5);
+        tft.setTextColor(Yellow,Black);
+        tft.setTextWrap(false);
+        tft.setTextDatum(MC_DATUM);
+        tft.drawString("IDLE", xpos, 50);
+        int getFontHeight = tft.fontHeight();
+
+        tft.setTextSize(2);
+        tft.setTextColor(White,Black);
+        tft.setTextDatum(MC_DATUM);
+        tft.drawString("Long press a button", xpos, 90);
+        tft.drawString("to exit", xpos, 110);
+    }
+    return proceed;
+  }
 
 #endif
 
@@ -145,7 +315,7 @@ void nodeTimeAdjustedCallback(int32_t offset);
 void delayReceivedCallback(uint32_t from, int32_t delay);
 
 Scheduler     userScheduler; // to control your personal task
-painlessMesh  mesh;
+
 
 bool calc_delay = false;
 SimpleList<uint32_t> nodes;
@@ -225,7 +395,7 @@ void initTTGOLED() {
   tft.setTextColor(TFT_WHITE);
   tft.setCursor(0, 0);
   tft.setTextDatum(MC_DATUM);
-  tft.setTextSize(1);
+  tft.setTextSize(2);
 
   tft.fillScreen(TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
@@ -357,12 +527,13 @@ void tapHandler(Button2& btn) {
         case SINGLE_CLICK:
             Serial.print("--------------------\n");
             Serial.print("Button A single \n\n");
-            decodeMessage("{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": \"abcd\"}");
-            
+            // 
+            nav.doNav(upCmd);
             break;
         case DOUBLE_CLICK:
             Serial.print("--------------------\n");
             Serial.print("Button A double \n\n");
+            decodeMessage("{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": \"abcd\"}");
             decodeMessage("{\"type\": \"pm\",\"receiver_id\": 673516837,  \"message\": \"abcd\"}");
 
             break;
@@ -375,7 +546,10 @@ void tapHandler(Button2& btn) {
         case LONG_CLICK:
             Serial.print("--------------------\n");
             Serial.print("Button A long \n\n");
-            decodeMessage("a");
+            unsigned int time = btn.wasPressedFor();
+            if (time >= 1000) {
+              nav.doNav(enterCmd);
+            }
             break;
     }
     Serial.print("click");
@@ -389,8 +563,8 @@ void tapButtonBHandler(Button2& btn) {
         case SINGLE_CLICK:
             Serial.print("--------------------\n");
             Serial.print("Button B single \n\n");
-            decodeMessage("{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": \"abcd\"}");
-            
+            // decodeMessage("{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": \"abcd\"}");
+            nav.doNav(downCmd);
             break;
         case DOUBLE_CLICK:
         Serial.print("--------------------\n");
@@ -407,7 +581,11 @@ void tapButtonBHandler(Button2& btn) {
         case LONG_CLICK:
             Serial.print("--------------------\n");
             Serial.print("Button B long \n\n");
-            decodeMessage("a");
+            // decodeMessage("a");
+            unsigned int time = btn.wasPressedFor();
+            if (time >= 1000) {
+              nav.doNav(escCmd);
+            }
             break;
     }
     Serial.print("click");
@@ -436,7 +614,19 @@ void setup() {
   buttonB.setLongClickHandler(tapButtonBHandler);
   buttonB.setDoubleClickHandler(tapButtonBHandler);
   buttonB.setTripleClickHandler(tapButtonBHandler);
+
+  Serial.print("Configuring PWM for TFT backlight... ");
+  ledcSetup(pwmLedChannelTFT, pwmFreq, pwmResolution);
+  ledcAttachPin(TFT_BL, pwmLedChannelTFT);
+  Serial.println("DONE");
+
+  Serial.print("Setting PWM for TFT backlight to default intensity... ");
+  ledcWrite(pwmLedChannelTFT, ledBacklight);
+  Serial.println("DONE");
   
+  nav.idleTask=idle;//point a function to be used when menu is suspended
+  // mainMenu[1].disable(); // can disable one of the menu item
+
   #endif
 
   mesh.setDebugMsgTypes( ERROR | DEBUG| CONNECTION | SYNC );
@@ -551,9 +741,13 @@ void loop() {
     loopOLEDDisplay();
     buttonA.loop();
   #elif DISPLAY_MODE == TTGOLED
-    loopTTGOLEDDisplay();
+    // loopTTGOLEDDisplay();
     buttonA.loop();
     buttonB.loop();
+
+    nav.poll();//this device only draws when needed
+
+    ledcWrite(pwmLedChannelTFT, ledBacklight);
   #endif
 }
 
