@@ -33,6 +33,8 @@
 #define   MESH_PASSWORD   "6q8DS9YQbr"
 #define   MESH_PORT       5555
 
+
+
 //------------------ define display Mode -----------------//
 #define OLED 1
 #define TTGOLED 2
@@ -94,6 +96,19 @@
 
   char buff[512];
   int vref = 1100;
+
+  // Menu
+  // #include <menu.h>
+  #include <menuIO/serialIO.h>
+  #include <menuIO/TFT_eSPIOut.h>
+  #include <menuIO/esp8266Out.h>//must include this even if not doing web output...
+  using namespace Menu;
+
+  // Setting PWM properties, do not change this!
+  const int pwmFreq = 5000;
+  const int pwmResolution = 8;
+  const int pwmLedChannelTFT = 0;
+
 #endif
 
 Button2 buttonA = Button2(BUTTON_A_PIN);
