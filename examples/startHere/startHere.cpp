@@ -12,6 +12,11 @@
 
 #define PROG_VERSION "0.2" // Don't change this!
 
+// -------------- OTA ----------------------------
+
+
+
+// -------------- Mesh Network / BLE --------------
 #include <painlessMesh.h>
 
 #include <BLEDevice.h>
