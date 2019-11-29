@@ -214,8 +214,6 @@ Scheduler     userScheduler; // to control your personal task
 
   MENU(mainMenu,"FreeHK - WiFi Mesh",doNothing,noEvent,wrapStyle
     ,SUBMENU(setOta)
-    ,OP("OTA Enable",myOtaOn,enterEvent)
-    ,OP("OTA Disable",myOtaOff,enterEvent)
     ,FIELD(ledBacklight,"Backlight: ","",0,255,10,5,doNothing,noEvent,wrapStyle) // Menu option to set the intensity of the backlight of the screen.
     ,OP("Send Group Message",doNothing,noEvent)
     ,OP("Send PM Message",doNothing,noEvent)
@@ -537,7 +535,7 @@ void decodeMessage(String message) {
     
     Serial.printf("Prepare Send Group message : msg= #### %s ####\n", to_message);
     sendGroupMessage(String(group_id), String(to_message), String(message_id));
-    Serial.printf("Prepare Send Group message done");
+    Serial.println("Prepare Send Group message done");
 
   } else if (strcmp ("pm", type) == 0) {
     
@@ -669,13 +667,6 @@ void setup() {
   otaCtrl = preferences.getUInt("ota", LOW);
   preferences.end();
 
-  buttonA.setClickHandler(tapHandler);
-  buttonA.setLongClickHandler(tapHandler);
-  buttonA.setDoubleClickHandler(tapHandler);
-  buttonA.setTripleClickHandler(tapHandler);
-
-  // pinMode(LED, OUTPUT);
-
   #if DISPLAY_MODE == OLED
   initOLED();
   #elif DISPLAY_MODE == TTGOLED
@@ -695,6 +686,11 @@ void setup() {
   ledcWrite(pwmLedChannelTFT, ledBacklight);
   Serial.println("DONE");
   
+  buttonA.setClickHandler(tapHandler);
+  buttonA.setLongClickHandler(tapHandler);
+  buttonA.setDoubleClickHandler(tapHandler);
+  buttonA.setTripleClickHandler(tapHandler);
+
   nav.idleTask=idle;//point a function to be used when menu is suspended
   // mainMenu[0].disable(); // can disable one of the menu item
 
@@ -794,7 +790,7 @@ void loop() {
     
   }
   
-  digitalWrite(LED, !onFlag);
+  // digitalWrite(LED, !onFlag);
 
   buttonA.loop();
 
@@ -1002,7 +998,7 @@ void receivedCallback(uint32_t from, String & msg) {
       Serial.printf("Pong Message Send: [%u] \n", from);
     }
   } else if (strcmp ("pong", type) == 0) {
-    Serial.printf("Pong Message Receive - before filter");
+    Serial.println("Pong Message Receive - before filter");
     if (mesh.getNodeId() == doc["receiver_id"]) {
       read_message_queue.push_back( String(msg.c_str()) );
       display_need_update = true;
