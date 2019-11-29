@@ -22,7 +22,7 @@
 
 #include "Button2.h"
 
-#define   VERSION       "1.1.11"
+#define   VERSION       "1.1.12"
 
 // ----------------- WIFI Mesh Setting -------------------//
 // some gpio pin that is connected to an LED...
@@ -129,12 +129,44 @@
   //   }
   // };
 
+  int otaCtrl=LOW; // Initial value for external connected led
+
+  result myOtaOn() {
+    otaCtrl=HIGH;
+    return proceed;
+  }
+  result myOtaOff() {
+    otaCtrl=LOW;
+    return proceed;
+  }
+
+  TOGGLE(otaCtrl,setOta,"OTA Status: ",doNothing,noEvent,noStyle//,doExit,enterEvent,noStyle
+    ,VALUE("Enable",HIGH,doNothing,noEvent)
+    ,VALUE("Disable",LOW,doNothing,noEvent)
+  );
+
+  MENU(subMenu,"OTA Update",doNothing,noEvent,noStyle
+    ,SUBMENU(setOta)
+    ,OP("Enable",myOtaOn,enterEvent)
+    ,OP("Disable",myOtaOff,enterEvent)
+    ,EXIT("<Back")
+  );
+
+  MENU(settingMenu,"Setting",doNothing,noEvent,noStyle
+    ,SUBMENU(subMenu)
+    ,OP(VERSION,doNothing,noEvent)
+    ,EXIT("<Back")
+  );
+
   MENU(mainMenu,"FreeHK - WiFi Mesh",doNothing,noEvent,wrapStyle
+    ,SUBMENU(setOta)
+    ,OP("OTA Enable",myOtaOn,enterEvent)
+    ,OP("OTA Disable",myOtaOff,enterEvent)
     ,FIELD(ledBacklight,"Backlight: ","",0,255,10,5,doNothing,noEvent,wrapStyle) // Menu option to set the intensity of the backlight of the screen.
     ,OP("Send Group Message",doNothing,noEvent)
     ,OP("Send PM Message",doNothing,noEvent)
     ,OP("Send Ping Message",doNothing,noEvent)
-    ,OP("Settings",doNothing,noEvent)
+    ,SUBMENU(settingMenu)
     ,EXIT("<Home")
   );
 
@@ -283,7 +315,6 @@
 
 Button2 buttonA = Button2(BUTTON_A_PIN);
 
-
 BLEServer *pServer = NULL;
 BLECharacteristic * pTxCharacteristic;
 bool deviceConnected = false;
@@ -300,10 +331,10 @@ std::deque<String> heartbeat_message_queue = {};
 
 // Prototypes
 void decodeMessage(String message);
-void sendGroupMessage(std::string group_id, std::string message);
-void sendGroupMessage(String group_id, String message);
-void sendPrivateMessage(uint32_t receiver_id, String message);
-void sendPrivateMessage(uint32_t receiver_id, std::string message);
+void sendGroupMessage(std::string group_id, std::string message, std::string message_id);
+void sendGroupMessage(String group_id, String message, String message_id);
+void sendPrivateMessage(uint32_t receiver_id, String message, String message_id);
+void sendPrivateMessage(uint32_t receiver_id, std::string message, std::string message_id);
 void sendPingMessage(uint32_t receiver_id);
 void sendPongMessage(uint32_t receiver_id);
 void sendBroadcastMessage(String message, bool includeSelf);
@@ -462,7 +493,7 @@ void decodeMessage(String message) {
   if (error)
   {
     Serial.printf("JSON Format decode error, fall back to public message\n\n");
-    sendGroupMessage(String("public"), message);
+    sendGroupMessage(String("public"), message, String("error"));
     return;
   }
 
@@ -471,17 +502,20 @@ void decodeMessage(String message) {
   if (strcmp ("gm", type) == 0) {
     const char* group_id = doc["group_id"];
     const char* to_message = doc["message"];
+    const char* message_id = doc["message_id"];
     
     Serial.printf("Prepare Send Group message : msg= #### %s ####\n", to_message);
-    sendGroupMessage(String(group_id), String(to_message));
+    sendGroupMessage(String(group_id), String(to_message), String(message_id));
     Serial.printf("Prepare Send Group message done");
 
   } else if (strcmp ("pm", type) == 0) {
     
     uint32_t receiver_id = doc["receiver_id"];
     const char* to_message = doc["message"];
+    const char* message_id = doc["message_id"];
+
     Serial.printf("Prepare send Private Message : [%u] msg= #### %s  ####\n", receiver_id, to_message);
-    sendPrivateMessage(receiver_id, String(to_message));
+    sendPrivateMessage(receiver_id, String(to_message), String(message_id));
     Serial.printf("Prepare send Private Message done\n");
     
   } else if (strcmp ("ping", type) == 0) {
@@ -493,7 +527,7 @@ void decodeMessage(String message) {
     
   }
   else {
-    sendGroupMessage(String("public"), message);
+    sendGroupMessage(String("public"), message, String("Unknown"));
   }
 }
 
@@ -533,14 +567,14 @@ void tapHandler(Button2& btn) {
         case DOUBLE_CLICK:
             Serial.print("--------------------\n");
             Serial.print("Button A double \n\n");
-            decodeMessage("{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": \"abcd\"}");
-            decodeMessage("{\"type\": \"pm\",\"receiver_id\": 673516837,  \"message\": \"abcd\"}");
+            decodeMessage("{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": \"abcd\",  \"message_id\": \"test\"}");
+            decodeMessage("{\"type\": \"pm\",\"receiver_id\": 673516837,  \"message\": \"abcd\",  \"message_id\": \"test\"}");
 
             break;
         case TRIPLE_CLICK:
             Serial.print("--------------------\n");
             Serial.print("Button A triple \n\n");
-            decodeMessage("{\"type\": \"ping\",\"receiver_id\": 673516837}");
+            decodeMessage("{\"type\": \"ping\",\"receiver_id\": 673516837,  \"message_id\": \"test\"}");
 
             break;
         case LONG_CLICK:
@@ -597,6 +631,8 @@ void tapButtonBHandler(Button2& btn) {
 
 void setup() {
   Serial.begin(115200);
+  while(!Serial);
+  Serial.flush();
 
   buttonA.setClickHandler(tapHandler);
   buttonA.setLongClickHandler(tapHandler);
@@ -751,13 +787,14 @@ void loop() {
   #endif
 }
 
-void sendGroupMessage(String group_id, String message) {
+void sendGroupMessage(String group_id, String message, String message_id) {
   
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
   
   msg["type"] = "gm";
   msg["group_id"] = group_id;
+  msg["message_id"] = message_id;
   msg["message"] = message;
   msg["source_id"] = mesh.getNodeId();
 
@@ -767,7 +804,7 @@ void sendGroupMessage(String group_id, String message) {
   sendBroadcastMessage(str, false);
 }
 
-void sendGroupMessage(std::string group_id, std::string message) {
+void sendGroupMessage(std::string group_id, std::string message, std::string message_id) {
   
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
@@ -775,6 +812,7 @@ void sendGroupMessage(std::string group_id, std::string message) {
   msg["type"] = "gm";
   msg["group_id"] = String(group_id.c_str());
   msg["message"] = String(message.c_str());
+  msg["message_id"] = String(message_id.c_str());
   msg["source_id"] = mesh.getNodeId();
 
   String str;
@@ -783,13 +821,14 @@ void sendGroupMessage(std::string group_id, std::string message) {
   sendBroadcastMessage(str, false);
 }
 
-void sendPrivateMessage(uint32_t receiver_id, String message) {
+void sendPrivateMessage(uint32_t receiver_id, String message, String message_id) {
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
   
   msg["type"] = "pm";
   msg["receiver_id"] = receiver_id;
   msg["message"] = message;
+  msg["message_id"] = message_id;
   msg["source_id"] = mesh.getNodeId();
 
   String str;
@@ -798,7 +837,7 @@ void sendPrivateMessage(uint32_t receiver_id, String message) {
   sendBroadcastMessage(str, false);
 }
 
-void sendPrivateMessage(uint32_t receiver_id, std::string message) {
+void sendPrivateMessage(uint32_t receiver_id, std::string message, std::string message_id) {
   
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
@@ -806,6 +845,7 @@ void sendPrivateMessage(uint32_t receiver_id, std::string message) {
   msg["type"] = "pm";
   msg["receiver_id"] = receiver_id;
   msg["message"] = String(message.c_str());
+  msg["message_id"] = String(message_id.c_str());
   msg["source_id"] = mesh.getNodeId();
 
   String str;
