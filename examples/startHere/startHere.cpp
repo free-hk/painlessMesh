@@ -13,6 +13,9 @@
 #define PROG_VERSION "0.2" // Don't change this!
 
 // -------------- OTA ----------------------------
+#include <Preferences.h>
+
+Preferences preferences;
 
 
 
@@ -27,7 +30,7 @@
 
 #include "Button2.h"
 
-#define   VERSION       "1.1.12"
+#define   VERSION       "1.1.13"
 
 // ----------------- WIFI Mesh Setting -------------------//
 // some gpio pin that is connected to an LED...
@@ -51,6 +54,7 @@
 
 //------------------ define display Mode end ------------//
 
+Scheduler     userScheduler; // to control your personal task
 
 #if DISPLAY_MODE == OLED
   //Libraries for OLED Display
@@ -123,6 +127,23 @@
   char buf1[]="0x11";
 
   painlessMesh  mesh;
+  // Prototypes
+  void decodeMessage(String message);
+  void sendGroupMessage(std::string group_id, std::string message, std::string message_id);
+  void sendGroupMessage(String group_id, String message, String message_id);
+  void sendPrivateMessage(uint32_t receiver_id, String message, String message_id);
+  void sendPrivateMessage(uint32_t receiver_id, std::string message, std::string message_id);
+  void sendPingMessage(uint32_t receiver_id);
+  void sendPongMessage(uint32_t receiver_id);
+  void sendBroadcastMessage(String message, bool includeSelf);
+  void sendHeartbeat(); 
+  void receivedCallback(uint32_t from, String & msg);
+  void newConnectionCallback(uint32_t nodeId);
+  void changedConnectionCallback(); 
+  void nodeTimeAdjustedCallback(int32_t offset); 
+  void delayReceivedCallback(uint32_t from, int32_t delay);
+
+  Task taskSendHeartbeat( TASK_SECOND * 1, TASK_FOREVER, &sendHeartbeat ); // start with a one second interval
 
   //customizing a prompt look!
   //by extending the prompt class
@@ -137,15 +158,43 @@
   int otaCtrl=LOW; // Initial value for external connected led
 
   result myOtaOn() {
+    Serial.println("Setup OTA Enable in myOtaOn");
     otaCtrl=HIGH;
+
+    preferences.begin("mesh-network", false);
+    otaCtrl = preferences.putUInt("ota", HIGH);
+    preferences.end();
+    delay(500);
+    mesh.stop();
+    delay(500);
+    ESP.restart();
+
     return proceed;
   }
   result myOtaOff() {
+    Serial.println("Setup OTA Disable in myOtaOff");
     otaCtrl=LOW;
+
+    preferences.begin("mesh-network", false);
+    otaCtrl = preferences.putUInt("ota", LOW);
+    preferences.end();
+    delay(500);
+    mesh.stop();
+    delay(500);
+    ESP.restart();
+    
     return proceed;
   }
 
-  TOGGLE(otaCtrl,setOta,"OTA Status: ",doNothing,noEvent,noStyle//,doExit,enterEvent,noStyle
+  void toggleOTA() {
+    if (otaCtrl == HIGH) {
+      myOtaOn();
+    } else {
+      myOtaOff();
+    }
+  }
+
+  TOGGLE(otaCtrl,setOta,"OTA Status: ",toggleOTA,(Menu::eventMask)(updateEvent|enterEvent),noStyle//,doExit,enterEvent,noStyle
     ,VALUE("Enable",HIGH,doNothing,noEvent)
     ,VALUE("Disable",LOW,doNothing,noEvent)
   );
@@ -332,32 +381,11 @@ std::deque<String> heartbeat_message_queue = {};
 // https://gitlab.com/painlessMesh/painlessMesh
 
 
-
-
-// Prototypes
-void decodeMessage(String message);
-void sendGroupMessage(std::string group_id, std::string message, std::string message_id);
-void sendGroupMessage(String group_id, String message, String message_id);
-void sendPrivateMessage(uint32_t receiver_id, String message, String message_id);
-void sendPrivateMessage(uint32_t receiver_id, std::string message, std::string message_id);
-void sendPingMessage(uint32_t receiver_id);
-void sendPongMessage(uint32_t receiver_id);
-void sendBroadcastMessage(String message, bool includeSelf);
-void sendHeartbeat(); 
-void receivedCallback(uint32_t from, String & msg);
-void newConnectionCallback(uint32_t nodeId);
-void changedConnectionCallback(); 
-void nodeTimeAdjustedCallback(int32_t offset); 
-void delayReceivedCallback(uint32_t from, int32_t delay);
-
-Scheduler     userScheduler; // to control your personal task
-
-
 bool calc_delay = false;
 SimpleList<uint32_t> nodes;
 
 void sendHeartbeat() ; // Prototype
-Task taskSendHeartbeat( TASK_SECOND * 1, TASK_FOREVER, &sendHeartbeat ); // start with a one second interval
+
 
 // Task to blink the number of nodes
 Task blinkNoNodes;
@@ -412,9 +440,7 @@ void loopOLEDDisplay() {
     display.print(message);
 
   }
-  // display.print("Counter:");
-  // display.setCursor(50,30);
-  // display.print(counter);      
+
   display.display();
 }
 
@@ -639,6 +665,10 @@ void setup() {
   while(!Serial);
   Serial.flush();
 
+  preferences.begin("mesh-network", false);
+  otaCtrl = preferences.getUInt("ota", LOW);
+  preferences.end();
+
   buttonA.setClickHandler(tapHandler);
   buttonA.setLongClickHandler(tapHandler);
   buttonA.setDoubleClickHandler(tapHandler);
@@ -666,31 +696,32 @@ void setup() {
   Serial.println("DONE");
   
   nav.idleTask=idle;//point a function to be used when menu is suspended
-  // mainMenu[1].disable(); // can disable one of the menu item
+  // mainMenu[0].disable(); // can disable one of the menu item
 
   #endif
 
   mesh.setDebugMsgTypes( ERROR | DEBUG| CONNECTION | SYNC );
   // mesh.setDebugMsgTypes(ERROR | DEBUG);  // set before init() so that you can see error messages
 
-  mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT);
-  mesh.onReceive(&receivedCallback);
-  mesh.onNewConnection(&newConnectionCallback);
-  mesh.onChangedConnections(&changedConnectionCallback);
-  mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
-  mesh.onNodeDelayReceived(&delayReceivedCallback);
+  if (otaCtrl == LOW) {
+    mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT); //, WIFI_STA);
+    mesh.onReceive(&receivedCallback);
+    mesh.onNewConnection(&newConnectionCallback);
+    mesh.onChangedConnections(&changedConnectionCallback);
+    mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
+    mesh.onNodeDelayReceived(&delayReceivedCallback);
 
-  String node_id = "UART Service - ";
-  node_id += mesh.getNodeId();
-  node_id += "\nVersion = " + String(VERSION);
-  Serial.println(node_id);
+    String node_id = "UART Service - ";
+    node_id += mesh.getNodeId();
+    node_id += "\nVersion = " + String(VERSION);
+    Serial.println(node_id);
 
-  BLEDevice::init(node_id.c_str());
+    userScheduler.addTask( taskSendHeartbeat );
+    taskSendHeartbeat.enable();
 
-  userScheduler.addTask( taskSendHeartbeat );
-  taskSendHeartbeat.enable();
+    BLEDevice::init(node_id.c_str());
 
-  blinkNoNodes.set(BLINK_PERIOD, (mesh.getNodeList().size() + 1) * 2, []() {
+    blinkNoNodes.set(BLINK_PERIOD, (mesh.getNodeList().size() + 1) * 2, []() {
       // If on, switch off, else switch on
       if (onFlag)
         onFlag = false;
@@ -750,10 +781,19 @@ void setup() {
   pServer->getAdvertising()->addServiceUUID(pService->getUUID());
   pServer->getAdvertising()->start();
   Serial.println("Waiting a client connection to notify...");
+  } else {
+    Serial.println("Start OTA mode");
+  }
+  
 }
 
 void loop() {
-  mesh.update();
+  if (otaCtrl==LOW) {
+    mesh.update();
+  } else {
+    
+  }
+  
   digitalWrite(LED, !onFlag);
 
   buttonA.loop();
@@ -897,6 +937,10 @@ void sendBroadcastMessage(String body, bool includeSelf = false) {
 }
 
 void sendHeartbeat() {
+  if (otaCtrl == HIGH) {
+    return;
+  }
+
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
   
