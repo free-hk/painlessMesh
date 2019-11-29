@@ -14,10 +14,23 @@
 
 // -------------- OTA ----------------------------
 #include <Preferences.h>
-
 Preferences preferences;
 
+#include <IotWebConf.h>
 
+// -- Initial name of the Thing. Used e.g. as SSID of the own Access Point.
+const char thingName[] = "testThing";
+
+// -- Initial password to connect to the Thing, when it creates an own Access Point.
+const char wifiInitialApPassword[] = "smrtTHNG8266";
+
+#define CONFIG_PIN 35
+
+DNSServer dnsServer;
+WebServer server(80);
+HTTPUpdateServer httpUpdater;
+
+IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
 
 // -------------- Mesh Network / BLE --------------
 #include <painlessMesh.h>
@@ -142,6 +155,9 @@ Scheduler     userScheduler; // to control your personal task
   void changedConnectionCallback(); 
   void nodeTimeAdjustedCallback(int32_t offset); 
   void delayReceivedCallback(uint32_t from, int32_t delay);
+
+  // Handle OTA 
+  void handleRoot();
 
   Task taskSendHeartbeat( TASK_SECOND * 1, TASK_FOREVER, &sendHeartbeat ); // start with a one second interval
 
@@ -497,6 +513,25 @@ void loopTTGOLEDDisplay() {
   }
 }
 
+/**
+ * Handle web requests to "/" path.
+ */
+void handleRoot()
+{
+  // -- Let IotWebConf test and handle captive portal requests.
+  if (iotWebConf.handleCaptivePortal())
+  {
+    // -- Captive portal request were already served.
+    return;
+  }
+  String s = "<!DOCTYPE html><html lang=\"en\"><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, user-scalable=no\"/>";
+  s += "<title>IotWebConf 01 Minimal</title></head><body>Hello world!";
+  s += "Go to <a href='config'>configure page</a> to change settings.";
+  s += "</body></html>\n";
+
+  server.send(200, "text/html", s);
+}
+
 Button2 buttonB = Button2(BUTTON_B_PIN);
 
 #endif
@@ -779,6 +814,16 @@ void setup() {
   Serial.println("Waiting a client connection to notify...");
   } else {
     Serial.println("Start OTA mode");
+
+    // -- Initializing the configuration.
+    iotWebConf.setConfigPin(CONFIG_PIN);
+    iotWebConf.setupUpdateServer(&httpUpdater);
+    iotWebConf.init();
+
+    // -- Set up required URL handlers on the web server.
+    server.on("/", handleRoot);
+    server.on("/config", []{ iotWebConf.handleConfig(); });
+    server.onNotFound([](){ iotWebConf.handleNotFound(); });
   }
   
 }
@@ -787,7 +832,7 @@ void loop() {
   if (otaCtrl==LOW) {
     mesh.update();
   } else {
-    
+    iotWebConf.doLoop();
   }
   
   // digitalWrite(LED, !onFlag);
