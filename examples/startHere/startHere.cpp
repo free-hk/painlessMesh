@@ -18,8 +18,8 @@ Preferences preferences;
 
 #include <IotWebConf.h>
 
-// -- Initial name of the Thing. Used e.g. as SSID of the own Access Point.
-const char thingName[] = "testThing";
+// -- Default SSID of the own Access Point before user update.
+const char thingName[] = "ESPCon";
 
 // -- Initial password to connect to the Thing, when it creates an own Access Point.
 const char wifiInitialApPassword[] = "smrtTHNG8266";
@@ -43,7 +43,7 @@ IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
 
 #include "Button2.h"
 
-#define   VERSION       "1.1.13"
+#define   VERSION       "1.1.15"
 
 // ----------------- WIFI Mesh Setting -------------------//
 // some gpio pin that is connected to an LED...
@@ -155,6 +155,8 @@ Scheduler     userScheduler; // to control your personal task
   void changedConnectionCallback(); 
   void nodeTimeAdjustedCallback(int32_t offset); 
   void delayReceivedCallback(uint32_t from, int32_t delay);
+  void initTTGOLED();
+  void loopTTGOLEDDisplay();
 
   // Handle OTA 
   void handleRoot();
@@ -360,21 +362,24 @@ Scheduler     userScheduler; // to control your personal task
   result idle(menuOut& o,idleEvent e) {
     if (e==idling) {
         // Show the idle message once
-        int xpos = tft.width() / 2; // Half the screen width
-        tft.fillScreen(Black);
+        // int xpos = tft.width() / 2; // Half the screen width
+        // tft.fillScreen(Black);
 
-        tft.setTextSize(5);
-        tft.setTextColor(Yellow,Black);
-        tft.setTextWrap(false);
-        tft.setTextDatum(MC_DATUM);
-        tft.drawString("IDLE", xpos, 50);
-        int getFontHeight = tft.fontHeight();
+        // tft.setTextSize(5);
+        // tft.setTextColor(Yellow,Black);
+        // tft.setTextWrap(false);
+        // tft.setTextDatum(MC_DATUM);
+        // tft.drawString("IDLE", xpos, 50);
+        // int getFontHeight = tft.fontHeight();
 
-        tft.setTextSize(2);
-        tft.setTextColor(White,Black);
-        tft.setTextDatum(MC_DATUM);
-        tft.drawString("Long press a button", xpos, 90);
-        tft.drawString("to exit", xpos, 110);
+        // tft.setTextSize(2);
+        // tft.setTextColor(White,Black);
+        // tft.setTextDatum(MC_DATUM);
+        // tft.drawString("Long press a button", xpos, 90);
+        // tft.drawString("to exit", xpos, 110);
+      
+      loopTTGOLEDDisplay();
+      
     }
     return proceed;
   }
@@ -460,8 +465,6 @@ void loopOLEDDisplay() {
 
 
 #elif DISPLAY_MODE == TTGOLED
-void initTTGOLED();
-void loopTTGOLEDDisplay();
 
 void initTTGOLED() {
   tft.init();
@@ -483,7 +486,7 @@ void loopTTGOLEDDisplay() {
     tft.fillScreen(TFT_BLACK);
     tft.setTextDatum(MC_DATUM);
 
-    tft.setTextSize(1);
+    tft.setTextSize(2);
     tft.setTextColor(TFT_WHITE);
     String out = "WiFi Mesh v";
     out += String(VERSION);
@@ -491,12 +494,14 @@ void loopTTGOLEDDisplay() {
 
     String node_id = "Node ID - ";
     node_id += mesh.getNodeId();
-    node_id += " ( ";
-    node_id += mesh.getNodeList().size();
-    node_id += " connected )";
 
-    tft.drawString(node_id,  tft.width() / 2, 25 );  
-    display_need_update = false;
+    tft.drawString(node_id,  tft.width() / 2, 30 );  
+
+    String node_count = "";
+    node_count += mesh.getNodeList().size();
+    node_count += " Node connected";
+
+    tft.drawString(node_count,  tft.width() / 2, 50 );  
 
     tft.setTextDatum(MC_DATUM);
     tft.setTextSize(2);
@@ -507,8 +512,15 @@ void loopTTGOLEDDisplay() {
       unread_message += String(read_message_queue.size());
       unread_message += " Unread Messages";
 
-      tft.drawString(unread_message, tft.width() / 2, 100 );  
+      tft.drawString(unread_message, tft.width() / 2, 70 );  
     }
+
+    tft.setTextSize(1);
+    tft.setTextColor(TFT_LIGHTGREY);
+    tft.drawString("Long press a button to show menu", tft.width() / 2, 130);
+    tft.setTextSize(2);
+
+    display_need_update = false;
 
   }
 }
@@ -525,8 +537,9 @@ void handleRoot()
     return;
   }
   String s = "<!DOCTYPE html><html lang=\"en\"><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, user-scalable=no\"/>";
-  s += "<title>IotWebConf 01 Minimal</title></head><body>Hello world!";
-  s += "Go to <a href='config'>configure page</a> to change settings.";
+  s += "<title>HK Free Wifi</title></head><body>Thanks for support WiFi Mesh! <br/><br/>";
+  // s += "Go to <a href='config'>configure page</a> to change settings.<br/><br/>";
+  s += "Go to http://192.168.4.1/firmware to apply latest firmware changes.<br/><br/>";
   s += "</body></html>\n";
 
   server.send(200, "text/html", s);
@@ -621,6 +634,7 @@ class MyCallbacks: public BLECharacteristicCallbacks {
 };
 
 void tapHandler(Button2& btn) {
+    display_need_update = true;
     switch (btn.getClickType()) {
         case SINGLE_CLICK:
             Serial.print("--------------------\n");
@@ -657,6 +671,7 @@ void tapHandler(Button2& btn) {
 }
 
 void tapButtonBHandler(Button2& btn) {
+    display_need_update = true;
     switch (btn.getClickType()) {
         case SINGLE_CLICK:
             Serial.print("--------------------\n");
@@ -727,6 +742,7 @@ void setup() {
   buttonA.setTripleClickHandler(tapHandler);
 
   nav.idleTask=idle;//point a function to be used when menu is suspended
+  nav.idleChanged=true; // If you have a task that needs constant attention, like drawing a clock on idle screen you can signal that with idleChanged as true
   // mainMenu[0].disable(); // can disable one of the menu item
 
   #endif
@@ -769,49 +785,49 @@ void setup() {
         blinkNoNodes.enableDelayed(BLINK_PERIOD - 
             (mesh.getNodeTime() % (BLINK_PERIOD*1000))/1000);
       }
-  });
+    });
 
-  userScheduler.addTask(blinkNoNodes);
-  blinkNoNodes.enable();
+    userScheduler.addTask(blinkNoNodes);
+    blinkNoNodes.enable();
 
-  randomSeed(analogRead(A0));
+    randomSeed(analogRead(A0));
 
-  // Create the BLE Server
-  pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new MyServerCallbacks());
+    // Create the BLE Server
+    pServer = BLEDevice::createServer();
+    pServer->setCallbacks(new MyServerCallbacks());
 
-  // Create the BLE Service
-  BLEService *pService = pServer->createService(SERVICE_UUID);
+    // Create the BLE Service
+    BLEService *pService = pServer->createService(SERVICE_UUID);
 
-  // Create a BLE Characteristic
-  pTxCharacteristic = pService->createCharacteristic(
-										CHARACTERISTIC_UUID_NOTIFY,
-										BLECharacteristic::PROPERTY_NOTIFY
-									);
-                      
-  pTxCharacteristic->addDescriptor(new BLE2902());
+    // Create a BLE Characteristic
+    pTxCharacteristic = pService->createCharacteristic(
+                      CHARACTERISTIC_UUID_NOTIFY,
+                      BLECharacteristic::PROPERTY_NOTIFY
+                    );
+                        
+    pTxCharacteristic->addDescriptor(new BLE2902());
 
-  BLECharacteristic * pReadCharacteristic = pService->createCharacteristic(
-											 CHARACTERISTIC_UUID_READ,
-											BLECharacteristic::PROPERTY_READ
-										);
+    BLECharacteristic * pReadCharacteristic = pService->createCharacteristic(
+                        CHARACTERISTIC_UUID_READ,
+                        BLECharacteristic::PROPERTY_READ
+                      );
 
-  pReadCharacteristic->setCallbacks(new MyCallbacks());
+    pReadCharacteristic->setCallbacks(new MyCallbacks());
 
-  BLECharacteristic * pRxCharacteristic = pService->createCharacteristic(
-											 CHARACTERISTIC_UUID_RX,
-											BLECharacteristic::PROPERTY_WRITE
-										);
+    BLECharacteristic * pRxCharacteristic = pService->createCharacteristic(
+                        CHARACTERISTIC_UUID_RX,
+                        BLECharacteristic::PROPERTY_WRITE
+                      );
 
-  pRxCharacteristic->setCallbacks(new MyCallbacks());
+    pRxCharacteristic->setCallbacks(new MyCallbacks());
 
-  // Start the service
-  pService->start();
+    // Start the service
+    pService->start();
 
-  // Start advertising
-  pServer->getAdvertising()->addServiceUUID(pService->getUUID());
-  pServer->getAdvertising()->start();
-  Serial.println("Waiting a client connection to notify...");
+    // Start advertising
+    pServer->getAdvertising()->addServiceUUID(pService->getUUID());
+    pServer->getAdvertising()->start();
+    Serial.println("Waiting a client connection to notify...");
   } else {
     Serial.println("Start OTA mode");
 
@@ -868,6 +884,10 @@ void loop() {
     buttonB.loop();
 
     nav.poll();//this device only draws when needed
+    if (nav.sleepTask) {
+      // Serial.println("sleep task");
+      loopTTGOLEDDisplay();
+    }
 
     ledcWrite(pwmLedChannelTFT, ledBacklight);
   #endif
