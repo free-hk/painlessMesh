@@ -828,6 +828,9 @@ void setup() {
     pServer->getAdvertising()->addServiceUUID(pService->getUUID());
     pServer->getAdvertising()->start();
     Serial.println("Waiting a client connection to notify...");
+
+    display_need_update = true;
+    nav.idleOn();
   } else {
     Serial.println("Start OTA mode");
 
