@@ -9,6 +9,30 @@
 //
 //************************************************************
 #include <Arduino.h>
+
+#define PROG_VERSION "0.2" // Don't change this!
+
+// -------------- OTA ----------------------------
+#include <Preferences.h>
+Preferences preferences;
+
+#include <IotWebConf.h>
+
+// -- Default SSID of the own Access Point before user update.
+const char thingName[] = "ESPCon";
+
+// -- Initial password to connect to the Thing, when it creates an own Access Point.
+const char wifiInitialApPassword[] = "smrtTHNG8266";
+
+#define CONFIG_PIN 35
+
+DNSServer dnsServer;
+WebServer server(80);
+HTTPUpdateServer httpUpdater;
+
+IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
+
+// -------------- Mesh Network / BLE --------------
 #include <painlessMesh.h>
 
 #include <BLEDevice.h>
@@ -19,7 +43,7 @@
 
 #include "Button2.h"
 
-#define   VERSION       "1.1.11"
+#define   VERSION       "1.2.2"
 
 // ----------------- WIFI Mesh Setting -------------------//
 // some gpio pin that is connected to an LED...
@@ -33,6 +57,8 @@
 #define   MESH_PASSWORD   "6q8DS9YQbr"
 #define   MESH_PORT       5555
 
+
+
 //------------------ define display Mode -----------------//
 #define OLED 1
 #define TTGOLED 2
@@ -41,6 +67,7 @@
 
 //------------------ define display Mode end ------------//
 
+Scheduler     userScheduler; // to control your personal task
 
 #if DISPLAY_MODE == OLED
   //Libraries for OLED Display
@@ -89,15 +116,277 @@
 
   #define BUTTON_A_PIN  0
   #define BUTTON_B_PIN  35
+  
+  int ledBacklight = 80; // Initial TFT backlight intensity on a scale of 0 to 255. Initial value is 80.
 
   TFT_eSPI tft = TFT_eSPI(135, 240); // Invoke custom library
 
   char buff[512];
   int vref = 1100;
+
+  // Menu
+  #include <menu.h>
+  #include <menuIO/serialIO.h>
+  #include <menuIO/TFT_eSPIOut.h>
+  #include <menuIO/esp8266Out.h>//must include this even if not doing web output...
+  using namespace Menu;
+
+  // Setting PWM properties, do not change this!
+  const int pwmFreq = 5000;
+  const int pwmResolution = 8;
+  const int pwmLedChannelTFT = 0;
+  char* constMEM hexDigit MEMMODE="0123456789ABCDEF";
+  char* constMEM hexNr[] MEMMODE={"0","x",hexDigit,hexDigit};
+  char buf1[]="0x11";
+
+  painlessMesh  mesh;
+  // Prototypes
+  void decodeMessage(String message);
+  void sendGroupMessage(std::string group_id, std::string message, std::string message_id);
+  void sendGroupMessage(String group_id, String message, String message_id);
+  void sendPrivateMessage(uint32_t receiver_id, String message, String message_id);
+  void sendPrivateMessage(uint32_t receiver_id, std::string message, std::string message_id);
+  void sendPingMessage(uint32_t receiver_id);
+  void sendPongMessage(uint32_t receiver_id);
+  void sendBroadcastMessage(String message, bool includeSelf);
+  void sendHeartbeat(); 
+  void receivedCallback(uint32_t from, String & msg);
+  void newConnectionCallback(uint32_t nodeId);
+  void changedConnectionCallback(); 
+  void nodeTimeAdjustedCallback(int32_t offset); 
+  void delayReceivedCallback(uint32_t from, int32_t delay);
+  void initTTGOLED();
+  void loopTTGOLEDDisplay();
+
+  // Handle OTA 
+  void handleRoot();
+
+  Task taskSendHeartbeat( TASK_SECOND * 1, TASK_FOREVER, &sendHeartbeat ); // start with a one second interval
+
+  //customizing a prompt look!
+  //by extending the prompt class
+  // class altPrompt:public prompt {
+  // public:
+  //   altPrompt(constMEM promptShadow& p):prompt(p) {}
+  //   Used printTo(navRoot &root,bool sel,menuOut& out, idx_t idx,idx_t len,idx_t) override {
+  //     return out.printRaw(F("special prompt!"),len);;
+  //   }
+  // };
+
+  int otaCtrl=LOW; // Initial value for external connected led
+
+  result myOtaOn() {
+    Serial.println("Setup OTA Enable in myOtaOn");
+    otaCtrl=HIGH;
+
+    preferences.begin("mesh-network", false);
+    otaCtrl = preferences.putUInt("ota", HIGH);
+    preferences.end();
+    delay(500);
+    mesh.stop();
+    delay(500);
+    ESP.restart();
+
+    return proceed;
+  }
+  result myOtaOff() {
+    Serial.println("Setup OTA Disable in myOtaOff");
+    otaCtrl=LOW;
+
+    preferences.begin("mesh-network", false);
+    otaCtrl = preferences.putUInt("ota", LOW);
+    preferences.end();
+    delay(500);
+    mesh.stop();
+    delay(500);
+    ESP.restart();
+    
+    return proceed;
+  }
+
+  void toggleOTA() {
+    if (otaCtrl == HIGH) {
+      myOtaOn();
+    } else {
+      myOtaOff();
+    }
+  }
+
+  TOGGLE(otaCtrl,setOta,"OTA Status: ",toggleOTA,(Menu::eventMask)(updateEvent|enterEvent),noStyle//,doExit,enterEvent,noStyle
+    ,VALUE("Enable",HIGH,doNothing,noEvent)
+    ,VALUE("Disable",LOW,doNothing,noEvent)
+  );
+
+  MENU(subMenu,"OTA Update",doNothing,noEvent,noStyle
+    ,SUBMENU(setOta)
+    ,OP("Enable",myOtaOn,enterEvent)
+    ,OP("Disable",myOtaOff,enterEvent)
+    ,EXIT("<Back")
+  );
+
+  MENU(settingMenu,"Setting",doNothing,noEvent,noStyle
+    ,SUBMENU(subMenu)
+    ,OP(VERSION,doNothing,noEvent)
+    ,EXIT("<Back")
+  );
+
+  MENU(mainMenu,"FreeHK - WiFi Mesh",doNothing,noEvent,wrapStyle
+    ,SUBMENU(setOta)
+    ,FIELD(ledBacklight,"Backlight: ","",0,255,10,5,doNothing,noEvent,wrapStyle) // Menu option to set the intensity of the backlight of the screen.
+    ,OP("Send Group Message",doNothing,noEvent)
+    ,OP("Send PM Message",doNothing,noEvent)
+    ,OP("Send Ping Message",doNothing,noEvent)
+    ,SUBMENU(settingMenu)
+    ,EXIT("<Home")
+  );
+
+  // define menu colors --------------------------------------------------------
+  //  {{disabled normal,disabled selected},{enabled normal,enabled selected, enabled editing}}
+  //monochromatic color table`'/.
+
+
+  #define Black RGB565(0,0,0)
+  #define Red	RGB565(255,0,0)
+  #define Green RGB565(0,255,0)
+  #define Blue RGB565(0,0,255)
+  #define Gray RGB565(128,128,128)
+  #define LighterRed RGB565(255,150,150)
+  #define LighterGreen RGB565(150,255,150)
+  #define LighterBlue RGB565(150,150,255)
+  #define DarkerRed RGB565(150,0,0)
+  #define DarkerGreen RGB565(0,150,0)
+  #define DarkerBlue RGB565(0,0,150)
+  #define Cyan RGB565(0,255,255)
+  #define Magenta RGB565(255,0,255)
+  #define Yellow RGB565(255,255,0)
+  #define White RGB565(255,255,255)
+
+  const colorDef<uint16_t> colors[6] MEMMODE={
+    {
+      {
+        (uint16_t)Black,
+        (uint16_t)Black
+      },
+      {
+        (uint16_t)Black,
+        (uint16_t)DarkerBlue,
+        (uint16_t)DarkerBlue
+      }
+    },//bgColor
+    {
+      {
+        (uint16_t)Gray,
+        (uint16_t)Gray
+      },
+      {
+        (uint16_t)White,
+        (uint16_t)White,
+        (uint16_t)White
+      }
+    },//fgColor
+    {
+      {
+        (uint16_t)White,
+        (uint16_t)Black
+      },
+      {
+        (uint16_t)Yellow,
+        (uint16_t)Yellow,
+        (uint16_t)Red
+      }
+    },//valColor
+    {
+      {
+        (uint16_t)White,
+        (uint16_t)Black
+      },
+      {
+        (uint16_t)White,
+        (uint16_t)Yellow,
+        (uint16_t)Yellow
+      }
+    },//unitColor
+    {
+      {
+        (uint16_t)White,
+        (uint16_t)Gray
+      },
+      {
+        (uint16_t)Black,
+        (uint16_t)Blue,
+        (uint16_t)White
+      }
+    },//cursorColor
+    {
+      {
+        (uint16_t)White,
+        (uint16_t)Yellow
+      },
+      {
+        (uint16_t)DarkerRed,
+        (uint16_t)White,
+        (uint16_t)White
+      }
+    },//titleColor
+  };
+
+  #define MAX_DEPTH 5
+
+  serialIn serial(Serial);
+
+  // MENU_INPUTS(in,&serial);its single, no need to `chainStream`
+
+  // define serial output device
+  idx_t serialTops[MAX_DEPTH]={0};
+  serialOut outSerial(Serial,serialTops);
+
+
+  #define GFX_WIDTH 240
+  #define GFX_HEIGHT 135
+  #define fontW 12
+  #define fontH 18
+
+  constMEM panel panels[] MEMMODE = {{0, 0, GFX_WIDTH / fontW, GFX_HEIGHT / fontH}};
+  navNode* navNodes[sizeof(panels) / sizeof(panel)]; //navNodes to store navigation status
+  panelsList pList(panels, navNodes, 1); //a list of panels and nodes
+  idx_t eSpiTops[MAX_DEPTH]={0};
+  TFT_eSPIOut eSpiOut(tft,colors,eSpiTops,pList,fontW,fontH+1);
+  menuOut* constMEM outputs[] MEMMODE={&outSerial,&eSpiOut};//list of output devices
+  outputsList out(outputs,sizeof(outputs)/sizeof(menuOut*));//outputs list controller
+
+  NAVROOT(nav,mainMenu,MAX_DEPTH,serial,out);
+
+  unsigned long idleTimestamp = millis();
+
+  //when menu is suspended
+  result idle(menuOut& o,idleEvent e) {
+    if (e==idling) {
+        // Show the idle message once
+        // int xpos = tft.width() / 2; // Half the screen width
+        // tft.fillScreen(Black);
+
+        // tft.setTextSize(5);
+        // tft.setTextColor(Yellow,Black);
+        // tft.setTextWrap(false);
+        // tft.setTextDatum(MC_DATUM);
+        // tft.drawString("IDLE", xpos, 50);
+        // int getFontHeight = tft.fontHeight();
+
+        // tft.setTextSize(2);
+        // tft.setTextColor(White,Black);
+        // tft.setTextDatum(MC_DATUM);
+        // tft.drawString("Long press a button", xpos, 90);
+        // tft.drawString("to exit", xpos, 110);
+      
+      loopTTGOLEDDisplay();
+      
+    }
+    return proceed;
+  }
+
 #endif
 
 Button2 buttonA = Button2(BUTTON_A_PIN);
-
 
 BLEServer *pServer = NULL;
 BLECharacteristic * pTxCharacteristic;
@@ -111,32 +400,11 @@ std::deque<String> heartbeat_message_queue = {};
 // https://gitlab.com/painlessMesh/painlessMesh
 
 
-
-
-// Prototypes
-void decodeMessage(String message);
-void sendGroupMessage(std::string group_id, std::string message);
-void sendGroupMessage(String group_id, String message);
-void sendPrivateMessage(uint32_t receiver_id, String message);
-void sendPrivateMessage(uint32_t receiver_id, std::string message);
-void sendPingMessage(uint32_t receiver_id);
-void sendPongMessage(uint32_t receiver_id);
-void sendBroadcastMessage(String message, bool includeSelf);
-void sendHeartbeat(); 
-void receivedCallback(uint32_t from, String & msg);
-void newConnectionCallback(uint32_t nodeId);
-void changedConnectionCallback(); 
-void nodeTimeAdjustedCallback(int32_t offset); 
-void delayReceivedCallback(uint32_t from, int32_t delay);
-
-Scheduler     userScheduler; // to control your personal task
-painlessMesh  mesh;
-
 bool calc_delay = false;
 SimpleList<uint32_t> nodes;
 
 void sendHeartbeat() ; // Prototype
-Task taskSendHeartbeat( TASK_SECOND * 1, TASK_FOREVER, &sendHeartbeat ); // start with a one second interval
+
 
 // Task to blink the number of nodes
 Task blinkNoNodes;
@@ -191,16 +459,12 @@ void loopOLEDDisplay() {
     display.print(message);
 
   }
-  // display.print("Counter:");
-  // display.setCursor(50,30);
-  // display.print(counter);      
+
   display.display();
 }
 
 
 #elif DISPLAY_MODE == TTGOLED
-void initTTGOLED();
-void loopTTGOLEDDisplay();
 
 void initTTGOLED() {
   tft.init();
@@ -210,7 +474,7 @@ void initTTGOLED() {
   tft.setTextColor(TFT_WHITE);
   tft.setCursor(0, 0);
   tft.setTextDatum(MC_DATUM);
-  tft.setTextSize(1);
+  tft.setTextSize(2);
 
   tft.fillScreen(TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
@@ -222,7 +486,7 @@ void loopTTGOLEDDisplay() {
     tft.fillScreen(TFT_BLACK);
     tft.setTextDatum(MC_DATUM);
 
-    tft.setTextSize(1);
+    tft.setTextSize(2);
     tft.setTextColor(TFT_WHITE);
     String out = "WiFi Mesh v";
     out += String(VERSION);
@@ -230,12 +494,14 @@ void loopTTGOLEDDisplay() {
 
     String node_id = "Node ID - ";
     node_id += mesh.getNodeId();
-    node_id += " ( ";
-    node_id += mesh.getNodeList().size();
-    node_id += " connected )";
 
-    tft.drawString(node_id,  tft.width() / 2, 25 );  
-    display_need_update = false;
+    tft.drawString(node_id,  tft.width() / 2, 30 );  
+
+    String node_count = "";
+    node_count += mesh.getNodeList().size();
+    node_count += " Node connected";
+
+    tft.drawString(node_count,  tft.width() / 2, 50 );  
 
     tft.setTextDatum(MC_DATUM);
     tft.setTextSize(2);
@@ -246,10 +512,37 @@ void loopTTGOLEDDisplay() {
       unread_message += String(read_message_queue.size());
       unread_message += " Unread Messages";
 
-      tft.drawString(unread_message, tft.width() / 2, 100 );  
+      tft.drawString(unread_message, tft.width() / 2, 70 );  
     }
 
+    tft.setTextSize(1);
+    tft.setTextColor(TFT_LIGHTGREY);
+    tft.drawString("Long press any button to show menu", tft.width() / 2, 130);
+    tft.setTextSize(2);
+
+    display_need_update = false;
+
   }
+}
+
+/**
+ * Handle web requests to "/" path.
+ */
+void handleRoot()
+{
+  // -- Let IotWebConf test and handle captive portal requests.
+  if (iotWebConf.handleCaptivePortal())
+  {
+    // -- Captive portal request were already served.
+    return;
+  }
+  String s = "<!DOCTYPE html><html lang=\"en\"><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, user-scalable=no\"/>";
+  s += "<title>HK Free Wifi</title></head><body>Thanks for support WiFi Mesh! <br/><br/>";
+  // s += "Go to <a href='config'>configure page</a> to change settings.<br/><br/>";
+  s += "Go to http://192.168.4.1/firmware to apply latest firmware changes.<br/><br/>";
+  s += "</body></html>\n";
+
+  server.send(200, "text/html", s);
 }
 
 Button2 buttonB = Button2(BUTTON_B_PIN);
@@ -277,7 +570,7 @@ void decodeMessage(String message) {
   if (error)
   {
     Serial.printf("JSON Format decode error, fall back to public message\n\n");
-    sendGroupMessage(String("public"), message);
+    sendGroupMessage(String("public"), message, String("error"));
     return;
   }
 
@@ -286,17 +579,20 @@ void decodeMessage(String message) {
   if (strcmp ("gm", type) == 0) {
     const char* group_id = doc["group_id"];
     const char* to_message = doc["message"];
+    const char* message_id = doc["message_id"];
     
     Serial.printf("Prepare Send Group message : msg= #### %s ####\n", to_message);
-    sendGroupMessage(String(group_id), String(to_message));
-    Serial.printf("Prepare Send Group message done");
+    sendGroupMessage(String(group_id), String(to_message), String(message_id));
+    Serial.println("Prepare Send Group message done");
 
   } else if (strcmp ("pm", type) == 0) {
     
     uint32_t receiver_id = doc["receiver_id"];
     const char* to_message = doc["message"];
+    const char* message_id = doc["message_id"];
+
     Serial.printf("Prepare send Private Message : [%u] msg= #### %s  ####\n", receiver_id, to_message);
-    sendPrivateMessage(receiver_id, String(to_message));
+    sendPrivateMessage(receiver_id, String(to_message), String(message_id));
     Serial.printf("Prepare send Private Message done\n");
     
   } else if (strcmp ("ping", type) == 0) {
@@ -308,7 +604,7 @@ void decodeMessage(String message) {
     
   }
   else {
-    sendGroupMessage(String("public"), message);
+    sendGroupMessage(String("public"), message, String("Unknown"));
   }
 }
 
@@ -338,29 +634,34 @@ class MyCallbacks: public BLECharacteristicCallbacks {
 };
 
 void tapHandler(Button2& btn) {
+    display_need_update = true;
     switch (btn.getClickType()) {
         case SINGLE_CLICK:
             Serial.print("--------------------\n");
             Serial.print("Button A single \n\n");
-            decodeMessage("{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": \"abcd\"}");
-            
+            // 
+            nav.doNav(upCmd);
             break;
         case DOUBLE_CLICK:
             Serial.print("--------------------\n");
             Serial.print("Button A double \n\n");
-            decodeMessage("{\"type\": \"pm\",\"receiver_id\": 673516837,  \"message\": \"abcd\"}");
+            decodeMessage("{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": \"abcd\",  \"message_id\": \"test\"}");
+            decodeMessage("{\"type\": \"pm\",\"receiver_id\": 673516837,  \"message\": \"abcd\",  \"message_id\": \"test\"}");
 
             break;
         case TRIPLE_CLICK:
             Serial.print("--------------------\n");
             Serial.print("Button A triple \n\n");
-            decodeMessage("{\"type\": \"ping\",\"receiver_id\": 673516837}");
+            decodeMessage("{\"type\": \"ping\",\"receiver_id\": 673516837,  \"message_id\": \"test\"}");
 
             break;
         case LONG_CLICK:
             Serial.print("--------------------\n");
             Serial.print("Button A long \n\n");
-            decodeMessage("a");
+            unsigned int time = btn.wasPressedFor();
+            if (time >= 1000) {
+              nav.doNav(enterCmd);
+            }
             break;
     }
     Serial.print("click");
@@ -370,12 +671,13 @@ void tapHandler(Button2& btn) {
 }
 
 void tapButtonBHandler(Button2& btn) {
+    display_need_update = true;
     switch (btn.getClickType()) {
         case SINGLE_CLICK:
             Serial.print("--------------------\n");
             Serial.print("Button B single \n\n");
-            decodeMessage("{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": \"abcd\"}");
-            
+            // decodeMessage("{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": \"abcd\"}");
+            nav.doNav(downCmd);
             break;
         case DOUBLE_CLICK:
         Serial.print("--------------------\n");
@@ -392,7 +694,11 @@ void tapButtonBHandler(Button2& btn) {
         case LONG_CLICK:
             Serial.print("--------------------\n");
             Serial.print("Button B long \n\n");
-            decodeMessage("a");
+            // decodeMessage("a");
+            unsigned int time = btn.wasPressedFor();
+            if (time >= 1000) {
+              nav.doNav(escCmd);
+            }
             break;
     }
     Serial.print("click");
@@ -404,13 +710,12 @@ void tapButtonBHandler(Button2& btn) {
 
 void setup() {
   Serial.begin(115200);
+  while(!Serial);
+  Serial.flush();
 
-  buttonA.setClickHandler(tapHandler);
-  buttonA.setLongClickHandler(tapHandler);
-  buttonA.setDoubleClickHandler(tapHandler);
-  buttonA.setTripleClickHandler(tapHandler);
-
-  // pinMode(LED, OUTPUT);
+  preferences.begin("mesh-network", false);
+  otaCtrl = preferences.getUInt("ota", LOW);
+  preferences.end();
 
   #if DISPLAY_MODE == OLED
   initOLED();
@@ -421,30 +726,49 @@ void setup() {
   buttonB.setLongClickHandler(tapButtonBHandler);
   buttonB.setDoubleClickHandler(tapButtonBHandler);
   buttonB.setTripleClickHandler(tapButtonBHandler);
+
+  Serial.print("Configuring PWM for TFT backlight... ");
+  ledcSetup(pwmLedChannelTFT, pwmFreq, pwmResolution);
+  ledcAttachPin(TFT_BL, pwmLedChannelTFT);
+  Serial.println("DONE");
+
+  Serial.print("Setting PWM for TFT backlight to default intensity... ");
+  ledcWrite(pwmLedChannelTFT, ledBacklight);
+  Serial.println("DONE");
   
+  buttonA.setClickHandler(tapHandler);
+  buttonA.setLongClickHandler(tapHandler);
+  buttonA.setDoubleClickHandler(tapHandler);
+  buttonA.setTripleClickHandler(tapHandler);
+
+  nav.idleTask=idle;//point a function to be used when menu is suspended
+  nav.idleChanged=true; // If you have a task that needs constant attention, like drawing a clock on idle screen you can signal that with idleChanged as true
+  // mainMenu[0].disable(); // can disable one of the menu item
+
   #endif
 
   mesh.setDebugMsgTypes( ERROR | DEBUG| CONNECTION | SYNC );
   // mesh.setDebugMsgTypes(ERROR | DEBUG);  // set before init() so that you can see error messages
 
-  mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT);
-  mesh.onReceive(&receivedCallback);
-  mesh.onNewConnection(&newConnectionCallback);
-  mesh.onChangedConnections(&changedConnectionCallback);
-  mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
-  mesh.onNodeDelayReceived(&delayReceivedCallback);
+  if (otaCtrl == LOW) {
+    mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT); //, WIFI_STA);
+    mesh.onReceive(&receivedCallback);
+    mesh.onNewConnection(&newConnectionCallback);
+    mesh.onChangedConnections(&changedConnectionCallback);
+    mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
+    mesh.onNodeDelayReceived(&delayReceivedCallback);
 
-  String node_id = "UART Service - ";
-  node_id += mesh.getNodeId();
-  node_id += "\nVersion = " + String(VERSION);
-  Serial.println(node_id);
+    String node_id = "UART Service - ";
+    node_id += mesh.getNodeId();
+    node_id += "\nVersion = " + String(VERSION);
+    Serial.println(node_id);
 
-  BLEDevice::init(node_id.c_str());
+    userScheduler.addTask( taskSendHeartbeat );
+    taskSendHeartbeat.enable();
 
-  userScheduler.addTask( taskSendHeartbeat );
-  taskSendHeartbeat.enable();
+    BLEDevice::init(node_id.c_str());
 
-  blinkNoNodes.set(BLINK_PERIOD, (mesh.getNodeList().size() + 1) * 2, []() {
+    blinkNoNodes.set(BLINK_PERIOD, (mesh.getNodeList().size() + 1) * 2, []() {
       // If on, switch off, else switch on
       if (onFlag)
         onFlag = false;
@@ -461,54 +785,76 @@ void setup() {
         blinkNoNodes.enableDelayed(BLINK_PERIOD - 
             (mesh.getNodeTime() % (BLINK_PERIOD*1000))/1000);
       }
-  });
+    });
 
-  userScheduler.addTask(blinkNoNodes);
-  blinkNoNodes.enable();
+    userScheduler.addTask(blinkNoNodes);
+    blinkNoNodes.enable();
 
-  randomSeed(analogRead(A0));
+    randomSeed(analogRead(A0));
 
-  // Create the BLE Server
-  pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new MyServerCallbacks());
+    // Create the BLE Server
+    pServer = BLEDevice::createServer();
+    pServer->setCallbacks(new MyServerCallbacks());
 
-  // Create the BLE Service
-  BLEService *pService = pServer->createService(SERVICE_UUID);
+    // Create the BLE Service
+    BLEService *pService = pServer->createService(SERVICE_UUID);
 
-  // Create a BLE Characteristic
-  pTxCharacteristic = pService->createCharacteristic(
-										CHARACTERISTIC_UUID_NOTIFY,
-										BLECharacteristic::PROPERTY_NOTIFY
-									);
-                      
-  pTxCharacteristic->addDescriptor(new BLE2902());
+    // Create a BLE Characteristic
+    pTxCharacteristic = pService->createCharacteristic(
+                      CHARACTERISTIC_UUID_NOTIFY,
+                      BLECharacteristic::PROPERTY_NOTIFY
+                    );
+                        
+    pTxCharacteristic->addDescriptor(new BLE2902());
 
-  BLECharacteristic * pReadCharacteristic = pService->createCharacteristic(
-											 CHARACTERISTIC_UUID_READ,
-											BLECharacteristic::PROPERTY_READ
-										);
+    BLECharacteristic * pReadCharacteristic = pService->createCharacteristic(
+                        CHARACTERISTIC_UUID_READ,
+                        BLECharacteristic::PROPERTY_READ
+                      );
 
-  pReadCharacteristic->setCallbacks(new MyCallbacks());
+    pReadCharacteristic->setCallbacks(new MyCallbacks());
 
-  BLECharacteristic * pRxCharacteristic = pService->createCharacteristic(
-											 CHARACTERISTIC_UUID_RX,
-											BLECharacteristic::PROPERTY_WRITE
-										);
+    BLECharacteristic * pRxCharacteristic = pService->createCharacteristic(
+                        CHARACTERISTIC_UUID_RX,
+                        BLECharacteristic::PROPERTY_WRITE
+                      );
 
-  pRxCharacteristic->setCallbacks(new MyCallbacks());
+    pRxCharacteristic->setCallbacks(new MyCallbacks());
 
-  // Start the service
-  pService->start();
+    // Start the service
+    pService->start();
 
-  // Start advertising
-  pServer->getAdvertising()->addServiceUUID(pService->getUUID());
-  pServer->getAdvertising()->start();
-  Serial.println("Waiting a client connection to notify...");
+    // Start advertising
+    pServer->getAdvertising()->addServiceUUID(pService->getUUID());
+    pServer->getAdvertising()->start();
+    Serial.println("Waiting a client connection to notify...");
+
+    display_need_update = true;
+    nav.idleOn();
+  } else {
+    Serial.println("Start OTA mode");
+
+    // -- Initializing the configuration.
+    iotWebConf.setConfigPin(CONFIG_PIN);
+    iotWebConf.setupUpdateServer(&httpUpdater);
+    iotWebConf.init();
+
+    // -- Set up required URL handlers on the web server.
+    server.on("/", handleRoot);
+    server.on("/config", []{ iotWebConf.handleConfig(); });
+    server.onNotFound([](){ iotWebConf.handleNotFound(); });
+  }
+  
 }
 
 void loop() {
-  mesh.update();
-  digitalWrite(LED, !onFlag);
+  if (otaCtrl==LOW) {
+    mesh.update();
+  } else {
+    iotWebConf.doLoop();
+  }
+  
+  // digitalWrite(LED, !onFlag);
 
   buttonA.loop();
 
@@ -536,19 +882,28 @@ void loop() {
     loopOLEDDisplay();
     buttonA.loop();
   #elif DISPLAY_MODE == TTGOLED
-    loopTTGOLEDDisplay();
+    // loopTTGOLEDDisplay();
     buttonA.loop();
     buttonB.loop();
+
+    nav.poll();//this device only draws when needed
+    if (nav.sleepTask) {
+      // Serial.println("sleep task");
+      loopTTGOLEDDisplay();
+    }
+
+    ledcWrite(pwmLedChannelTFT, ledBacklight);
   #endif
 }
 
-void sendGroupMessage(String group_id, String message) {
+void sendGroupMessage(String group_id, String message, String message_id) {
   
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
   
   msg["type"] = "gm";
   msg["group_id"] = group_id;
+  msg["message_id"] = message_id;
   msg["message"] = message;
   msg["source_id"] = mesh.getNodeId();
 
@@ -558,7 +913,7 @@ void sendGroupMessage(String group_id, String message) {
   sendBroadcastMessage(str, false);
 }
 
-void sendGroupMessage(std::string group_id, std::string message) {
+void sendGroupMessage(std::string group_id, std::string message, std::string message_id) {
   
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
@@ -566,6 +921,7 @@ void sendGroupMessage(std::string group_id, std::string message) {
   msg["type"] = "gm";
   msg["group_id"] = String(group_id.c_str());
   msg["message"] = String(message.c_str());
+  msg["message_id"] = String(message_id.c_str());
   msg["source_id"] = mesh.getNodeId();
 
   String str;
@@ -574,13 +930,14 @@ void sendGroupMessage(std::string group_id, std::string message) {
   sendBroadcastMessage(str, false);
 }
 
-void sendPrivateMessage(uint32_t receiver_id, String message) {
+void sendPrivateMessage(uint32_t receiver_id, String message, String message_id) {
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
   
   msg["type"] = "pm";
   msg["receiver_id"] = receiver_id;
   msg["message"] = message;
+  msg["message_id"] = message_id;
   msg["source_id"] = mesh.getNodeId();
 
   String str;
@@ -589,7 +946,7 @@ void sendPrivateMessage(uint32_t receiver_id, String message) {
   sendBroadcastMessage(str, false);
 }
 
-void sendPrivateMessage(uint32_t receiver_id, std::string message) {
+void sendPrivateMessage(uint32_t receiver_id, std::string message, std::string message_id) {
   
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
@@ -597,6 +954,7 @@ void sendPrivateMessage(uint32_t receiver_id, std::string message) {
   msg["type"] = "pm";
   msg["receiver_id"] = receiver_id;
   msg["message"] = String(message.c_str());
+  msg["message_id"] = String(message_id.c_str());
   msg["source_id"] = mesh.getNodeId();
 
   String str;
@@ -643,6 +1001,10 @@ void sendBroadcastMessage(String body, bool includeSelf = false) {
 }
 
 void sendHeartbeat() {
+  if (otaCtrl == HIGH) {
+    return;
+  }
+
   DynamicJsonDocument jsonBuffer(1024);
   JsonObject msg = jsonBuffer.to<JsonObject>();
   
@@ -704,7 +1066,7 @@ void receivedCallback(uint32_t from, String & msg) {
       Serial.printf("Pong Message Send: [%u] \n", from);
     }
   } else if (strcmp ("pong", type) == 0) {
-    Serial.printf("Pong Message Receive - before filter");
+    Serial.println("Pong Message Receive - before filter");
     if (mesh.getNodeId() == doc["receiver_id"]) {
       read_message_queue.push_back( String(msg.c_str()) );
       display_need_update = true;
