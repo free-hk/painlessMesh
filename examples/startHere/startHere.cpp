@@ -43,7 +43,7 @@ IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
 
 #include "Button2.h"
 
-#define   VERSION       "1.1.15"
+#define   VERSION       "1.2.2"
 
 // ----------------- WIFI Mesh Setting -------------------//
 // some gpio pin that is connected to an LED...
@@ -517,7 +517,7 @@ void loopTTGOLEDDisplay() {
 
     tft.setTextSize(1);
     tft.setTextColor(TFT_LIGHTGREY);
-    tft.drawString("Long press a button to show menu", tft.width() / 2, 130);
+    tft.drawString("Long press any button to show menu", tft.width() / 2, 130);
     tft.setTextSize(2);
 
     display_need_update = false;
