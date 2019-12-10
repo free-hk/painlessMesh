@@ -760,13 +760,11 @@ void setup() {
 
     String node_id = "UART Service - ";
     node_id += mesh.getNodeId();
-    node_id += "\nVersion = " + String(VERSION);
-    Serial.println(node_id);
+    String node_id_display = node_id + "\nVersion = " + String(VERSION);
+    Serial.println(node_id_display);
 
     userScheduler.addTask( taskSendHeartbeat );
     taskSendHeartbeat.enable();
-
-    BLEDevice::init(node_id.c_str());
 
     blinkNoNodes.set(BLINK_PERIOD, (mesh.getNodeList().size() + 1) * 2, []() {
       // If on, switch off, else switch on
@@ -793,6 +791,8 @@ void setup() {
     randomSeed(analogRead(A0));
 
     // Create the BLE Server
+    BLEDevice::init(node_id.c_str());
+
     pServer = BLEDevice::createServer();
     pServer->setCallbacks(new MyServerCallbacks());
 
