@@ -43,7 +43,7 @@ IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
 
 #include "Button2.h"
 
-#define   VERSION       "1.2.2"
+#define   VERSION       "1.2.5"
 
 // ----------------- WIFI Mesh Setting -------------------//
 // some gpio pin that is connected to an LED...
@@ -575,8 +575,9 @@ void decodeMessage(String message) {
   }
 
   const char* type = doc["type"];
-
+  
   if (strcmp ("gm", type) == 0) {
+
     const char* group_id = doc["group_id"];
     const char* to_message = doc["message"];
     const char* message_id = doc["message_id"];
@@ -608,15 +609,8 @@ void decodeMessage(String message) {
   }
 }
 
-class MyCallbacks: public BLECharacteristicCallbacks {
+class BLEReadCallbacks: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
-      std::string rxValue = pCharacteristic->getValue();
-
-      if (rxValue.length() > 0) {
-
-        String messageStr = String(rxValue.c_str());
-        decodeMessage(messageStr);
-      }
     }
 
     void onRead(BLECharacteristic *pCharacteristic) {
@@ -624,12 +618,35 @@ class MyCallbacks: public BLECharacteristicCallbacks {
         String message = read_message_queue.front();
         pCharacteristic->setValue(message.c_str());
         read_message_queue.pop_front();
+        display_need_update = true;
       }
       else {
         // if no message in queue
         String message = "{}";
         pCharacteristic->setValue(message.c_str());
       }
+    }
+};
+
+class BLEWriteCallbacks: public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pCharacteristic) {
+      std::string rxValue = pCharacteristic->getValue();
+    
+      if (rxValue.length() > 0) {
+        String messageStr = String(rxValue.c_str());  
+        Serial.println(messageStr);
+        if (strcmp ("{}", rxValue.c_str()) == 0)
+        {
+          Serial.println("empty message, ignore for now, need to fix later");
+        }
+        else 
+        {
+          decodeMessage(messageStr);
+        }
+      }
+    }
+
+    void onRead(BLECharacteristic *pCharacteristic) {
     }
 };
 
@@ -812,14 +829,14 @@ void setup() {
                         BLECharacteristic::PROPERTY_READ
                       );
 
-    pReadCharacteristic->setCallbacks(new MyCallbacks());
+    pReadCharacteristic->setCallbacks(new BLEReadCallbacks());
 
     BLECharacteristic * pRxCharacteristic = pService->createCharacteristic(
                         CHARACTERISTIC_UUID_RX,
                         BLECharacteristic::PROPERTY_WRITE
                       );
 
-    pRxCharacteristic->setCallbacks(new MyCallbacks());
+    pRxCharacteristic->setCallbacks(new BLEWriteCallbacks());
 
     // Start the service
     pService->start();
