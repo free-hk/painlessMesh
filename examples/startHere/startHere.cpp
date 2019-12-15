@@ -92,6 +92,7 @@ Scheduler     userScheduler; // to control your personal task
   #include "WiFi.h"
   #include <Wire.h>
   #include "esp_adc_cal.h"
+  #include <TTGOTDisplay.h>
   //#include "bmp.h"
 
   #ifndef TFT_DISPOFF
@@ -119,7 +120,11 @@ Scheduler     userScheduler; // to control your personal task
   
   int ledBacklight = 80; // Initial TFT backlight intensity on a scale of 0 to 255. Initial value is 80.
 
-  TFT_eSPI tft = TFT_eSPI(135, 240); // Invoke custom library
+  // TFT_eSPI tft = TFT_eSPI(135, 240); // Invoke custom library
+  TTGOTDisplay ttgo {};
+  // ttgo.initTFT();
+  TFT_eSPI tft = ttgo.getTFT();
+  ttgo.initTFT();
 
   char buff[512];
   int vref = 1100;
