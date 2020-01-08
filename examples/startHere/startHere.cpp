@@ -422,47 +422,9 @@ void loopOLEDDisplay() {
 #elif DISPLAY_MODE == TTGOLED
 
 void loopTTGOLEDDisplay() {
-
   if (display_need_update) {
-    tft.fillScreen(TFT_BLACK);
-    tft.setTextDatum(MC_DATUM);
-
-    tft.setTextSize(2);
-    tft.setTextColor(TFT_WHITE);
-    String out = "WiFi Mesh v";
-    out += String(VERSION);
-    tft.drawString(out,  tft.width() / 2, 10 );
-
-    String node_id = "Node ID - ";
-    node_id += mesh.getNodeId();
-
-    tft.drawString(node_id,  tft.width() / 2, 30 );  
-
-    String node_count = "";
-    node_count += mesh.getNodeList().size();
-    node_count += " Node connected";
-
-    tft.drawString(node_count,  tft.width() / 2, 50 );  
-
-    tft.setTextDatum(MC_DATUM);
-    tft.setTextSize(2);
-    tft.setTextColor(TFT_RED);
-
-    if (read_message_queue.size() > 0) {
-      String unread_message = "";
-      unread_message += String(read_message_queue.size());
-      unread_message += " Unread Messages";
-
-      tft.drawString(unread_message, tft.width() / 2, 70 );  
-    }
-
-    tft.setTextSize(1);
-    tft.setTextColor(TFT_LIGHTGREY);
-    tft.drawString("Long press any button to show menu", tft.width() / 2, 130);
-    tft.setTextSize(2);
-
+    ttgo.loop(mesh.getNodeId(), mesh.getNodeList().size(), String(VERSION), read_message_queue.size());
     display_need_update = false;
-
   }
 }
 
