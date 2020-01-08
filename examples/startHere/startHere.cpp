@@ -43,10 +43,14 @@ IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
 
 #include "Button2.h"
 
-#define   VERSION       "1.2.10"
+#define   VERSION       "1.2.11"
 
 // --------------- Display -------------------------
-#include "./lib/Display/src/TTGOTDisplay.h"
+#include "TTGOTDisplay.h"
+#define OLED 1
+#define TTGOLED 2
+#define NO_DISPLAY 0
+#define DISPLAY_MODE TTGOLED
 
 // ----------------- WIFI Mesh Setting -------------------//
 // some gpio pin that is connected to an LED...
@@ -59,16 +63,6 @@ IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
 #define   MESH_SSID       "FreeHK"
 #define   MESH_PASSWORD   "6q8DS9YQbr"
 #define   MESH_PORT       5555
-
-
-
-//------------------ define display Mode -----------------//
-#define OLED 1
-#define TTGOLED 2
-#define NO_DISPLAY 0
-#define DISPLAY_MODE TTGOLED
-
-//------------------ define display Mode end ------------//
 
 Scheduler     userScheduler; // to control your personal task
 
@@ -90,12 +84,6 @@ Scheduler     userScheduler; // to control your personal task
   #define BUTTON_A_PIN  -1
 
 #elif DISPLAY_MODE == TTGOLED
-  #include <TFT_eSPI.h>
-  #include <SPI.h>
-  #include "WiFi.h"
-  #include <Wire.h>
-  #include "esp_adc_cal.h"
-
   #define BUTTON_1        35
   #define BUTTON_2        0
 
