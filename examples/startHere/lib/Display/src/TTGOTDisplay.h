@@ -20,6 +20,7 @@ class TTGOTDisplay
         TTGOTDisplay(int width, int height) : _tft{width, height} {};
         ~TTGOTDisplay();
         TFT_eSPI getTFT();
+        void loop(uint32_t nodeId, int node_list_count, String version, int unread_count);
     
     private:
         TFT_eSPI _tft = {135, 240};
