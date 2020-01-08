@@ -43,7 +43,7 @@ IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
 
 #include "Button2.h"
 
-#define   VERSION       "1.2.11"
+#define   VERSION       "1.2.12"
 
 // --------------- Display -------------------------
 #include "TTGOTDisplay.h"
@@ -67,6 +67,17 @@ IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
 Scheduler     userScheduler; // to control your personal task
 
 #if DISPLAY_MODE == OLED
+  #define BUTTON_A_PIN  0
+  #define BUTTON_A_PIN  -1
+#elif DISPLAY_MODE == TTGOLED
+  #define BUTTON_A_PIN  0
+  #define BUTTON_B_PIN  35
+#endif
+
+Button2 buttonA = Button2(BUTTON_A_PIN);
+Button2 buttonB = Button2(BUTTON_B_PIN);
+
+#if DISPLAY_MODE == OLED
   //Libraries for OLED Display
   #include <Wire.h>
   #include <Adafruit_GFX.h>
@@ -80,16 +91,7 @@ Scheduler     userScheduler; // to control your personal task
 
   Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RST);
 
-  #define BUTTON_A_PIN  0
-  #define BUTTON_A_PIN  -1
-
 #elif DISPLAY_MODE == TTGOLED
-  #define BUTTON_1        35
-  #define BUTTON_2        0
-
-  #define BUTTON_A_PIN  0
-  #define BUTTON_B_PIN  35
-  
   int ledBacklight = 80; // Initial TFT backlight intensity on a scale of 0 to 255. Initial value is 80.
 
   TTGOTDisplay ttgo;
@@ -330,8 +332,6 @@ Scheduler     userScheduler; // to control your personal task
   }
 #endif
 
-Button2 buttonA = Button2(BUTTON_A_PIN);
-
 BLEServer *pServer = NULL;
 BLECharacteristic * pTxCharacteristic;
 bool deviceConnected = false;
@@ -341,14 +341,10 @@ uint8_t txValue = 0;
 std::deque<String> read_message_queue = {};
 std::deque<String> heartbeat_message_queue = {};
 
-// https://gitlab.com/painlessMesh/painlessMesh
-
-
 bool calc_delay = false;
 SimpleList<uint32_t> nodes;
 
 void sendHeartbeat() ; // Prototype
-
 
 // Task to blink the number of nodes
 Task blinkNoNodes;
@@ -436,8 +432,6 @@ void handleRoot()
 
   server.send(200, "text/html", s);
 }
-
-Button2 buttonB = Button2(BUTTON_B_PIN);
 
 #endif
 
