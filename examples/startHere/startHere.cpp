@@ -129,23 +129,12 @@ Scheduler     userScheduler; // to control your personal task
   void changedConnectionCallback(); 
   void nodeTimeAdjustedCallback(int32_t offset); 
   void delayReceivedCallback(uint32_t from, int32_t delay);
-  // void initTTGOLED();
   void loopTTGOLEDDisplay();
 
   // Handle OTA 
   void handleRoot();
 
   Task taskSendHeartbeat( TASK_SECOND * 1, TASK_FOREVER, &sendHeartbeat ); // start with a one second interval
-
-  //customizing a prompt look!
-  //by extending the prompt class
-  // class altPrompt:public prompt {
-  // public:
-  //   altPrompt(constMEM promptShadow& p):prompt(p) {}
-  //   Used printTo(navRoot &root,bool sel,menuOut& out, idx_t idx,idx_t len,idx_t) override {
-  //     return out.printRaw(F("special prompt!"),len);;
-  //   }
-  // };
 
   int otaCtrl=LOW; // Initial value for external connected led
 
