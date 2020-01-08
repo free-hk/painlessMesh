@@ -43,7 +43,10 @@ IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
 
 #include "Button2.h"
 
-#define   VERSION       "1.2.5"
+#define   VERSION       "1.2.10"
+
+// --------------- Display -------------------------
+#include "./lib/Display/src/TTGOTDisplay.h"
 
 // ----------------- WIFI Mesh Setting -------------------//
 // some gpio pin that is connected to an LED...
@@ -92,26 +95,7 @@ Scheduler     userScheduler; // to control your personal task
   #include "WiFi.h"
   #include <Wire.h>
   #include "esp_adc_cal.h"
-  #include <TTGOTDisplay.h>
-  //#include "bmp.h"
 
-  #ifndef TFT_DISPOFF
-  #define TFT_DISPOFF 0x28
-  #endif
-
-  #ifndef TFT_SLPIN
-  #define TFT_SLPIN   0x10
-  #endif
-
-  #define TFT_MOSI            19
-  #define TFT_SCLK            18
-  #define TFT_CS              5
-  #define TFT_DC              16
-  #define TFT_RST             23 
-
-  #define TFT_BL          4  // Display backlight control pin
-  #define ADC_EN          14
-  #define ADC_PIN         34
   #define BUTTON_1        35
   #define BUTTON_2        0
 
@@ -120,11 +104,8 @@ Scheduler     userScheduler; // to control your personal task
   
   int ledBacklight = 80; // Initial TFT backlight intensity on a scale of 0 to 255. Initial value is 80.
 
-  // TFT_eSPI tft = TFT_eSPI(135, 240); // Invoke custom library
-  TTGOTDisplay ttgo {};
-  // ttgo.initTFT();
+  TTGOTDisplay ttgo;
   TFT_eSPI tft = ttgo.getTFT();
-  ttgo.initTFT();
 
   char buff[512];
   int vref = 1100;
@@ -160,7 +141,7 @@ Scheduler     userScheduler; // to control your personal task
   void changedConnectionCallback(); 
   void nodeTimeAdjustedCallback(int32_t offset); 
   void delayReceivedCallback(uint32_t from, int32_t delay);
-  void initTTGOLED();
+  // void initTTGOLED();
   void loopTTGOLEDDisplay();
 
   // Handle OTA 
@@ -366,29 +347,10 @@ Scheduler     userScheduler; // to control your personal task
   //when menu is suspended
   result idle(menuOut& o,idleEvent e) {
     if (e==idling) {
-        // Show the idle message once
-        // int xpos = tft.width() / 2; // Half the screen width
-        // tft.fillScreen(Black);
-
-        // tft.setTextSize(5);
-        // tft.setTextColor(Yellow,Black);
-        // tft.setTextWrap(false);
-        // tft.setTextDatum(MC_DATUM);
-        // tft.drawString("IDLE", xpos, 50);
-        // int getFontHeight = tft.fontHeight();
-
-        // tft.setTextSize(2);
-        // tft.setTextColor(White,Black);
-        // tft.setTextDatum(MC_DATUM);
-        // tft.drawString("Long press a button", xpos, 90);
-        // tft.drawString("to exit", xpos, 110);
-      
       loopTTGOLEDDisplay();
-      
     }
     return proceed;
   }
-
 #endif
 
 Button2 buttonA = Button2(BUTTON_A_PIN);
@@ -470,20 +432,6 @@ void loopOLEDDisplay() {
 
 
 #elif DISPLAY_MODE == TTGOLED
-
-void initTTGOLED() {
-  tft.init();
-  tft.setRotation(1);
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextSize(2);
-  tft.setTextColor(TFT_WHITE);
-  tft.setCursor(0, 0);
-  tft.setTextDatum(MC_DATUM);
-  tft.setTextSize(2);
-
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextDatum(MC_DATUM);
-}
 
 void loopTTGOLEDDisplay() {
 
@@ -742,7 +690,6 @@ void setup() {
   #if DISPLAY_MODE == OLED
   initOLED();
   #elif DISPLAY_MODE == TTGOLED
-  initTTGOLED();
 
   buttonB.setClickHandler(tapButtonBHandler);
   buttonB.setLongClickHandler(tapButtonBHandler);
@@ -765,7 +712,6 @@ void setup() {
 
   nav.idleTask=idle;//point a function to be used when menu is suspended
   nav.idleChanged=true; // If you have a task that needs constant attention, like drawing a clock on idle screen you can signal that with idleChanged as true
-  // mainMenu[0].disable(); // can disable one of the menu item
 
   #endif
 

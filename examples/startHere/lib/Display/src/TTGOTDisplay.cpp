@@ -1,18 +1,12 @@
 #include "Arduino.h"
 #include "TTGOTDisplay.h"
 
-// TTGOTDisplay::TTGOTDisplay(TFT_eSPI tft)
-// {
-//     // _tft = tft;
-// }
-
 TTGOTDisplay::~TTGOTDisplay()
 {
 }
 
-void TTGOTDisplay::initTFT()
+TFT_eSPI TTGOTDisplay::getTFT()
 {
-    // _tft = TFT_eSPI(135, 240);
     _tft.init();
     _tft.setRotation(1);
     _tft.fillScreen(TFT_BLACK);
@@ -24,9 +18,5 @@ void TTGOTDisplay::initTFT()
 
     _tft.fillScreen(TFT_BLACK);
     _tft.setTextDatum(MC_DATUM);
-}
-
-TFT_eSPI TTGOTDisplay::getTFT()
-{
     return _tft;
 }
