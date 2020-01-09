@@ -43,7 +43,7 @@ IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
 
 #include "Button2.h"
 
-#define   VERSION       "1.2.12"
+#define   VERSION       "1.2.15"
 
 // --------------- Display -------------------------
 #include "TTGOTDisplay.h"
@@ -101,12 +101,9 @@ Button2 buttonB = Button2(BUTTON_B_PIN);
   int vref = 1100;
 
   // Menu
-  #include <menu.h>
-  #include <menuIO/serialIO.h>
-  #include <menuIO/TFT_eSPIOut.h>
-  #include <menuIO/esp8266Out.h>//must include this even if not doing web output...
+  #include "MeshMenu.h"
   using namespace Menu;
-
+ 
   // Setting PWM properties, do not change this!
   const int pwmFreq = 5000;
   const int pwmResolution = 8;
@@ -209,94 +206,32 @@ Button2 buttonB = Button2(BUTTON_B_PIN);
   //  {{disabled normal,disabled selected},{enabled normal,enabled selected, enabled editing}}
   //monochromatic color table`'/.
 
-
-  #define Black RGB565(0,0,0)
-  #define Red	RGB565(255,0,0)
-  #define Green RGB565(0,255,0)
-  #define Blue RGB565(0,0,255)
-  #define Gray RGB565(128,128,128)
-  #define LighterRed RGB565(255,150,150)
-  #define LighterGreen RGB565(150,255,150)
-  #define LighterBlue RGB565(150,150,255)
-  #define DarkerRed RGB565(150,0,0)
-  #define DarkerGreen RGB565(0,150,0)
-  #define DarkerBlue RGB565(0,0,150)
-  #define Cyan RGB565(0,255,255)
-  #define Magenta RGB565(255,0,255)
-  #define Yellow RGB565(255,255,0)
-  #define White RGB565(255,255,255)
-
   const colorDef<uint16_t> colors[6] MEMMODE={
     {
-      {
-        (uint16_t)Black,
-        (uint16_t)Black
-      },
-      {
-        (uint16_t)Black,
-        (uint16_t)DarkerBlue,
-        (uint16_t)DarkerBlue
-      }
+      {(uint16_t)Black, (uint16_t)Black},
+      {(uint16_t)Black, (uint16_t)DarkerBlue,(uint16_t)DarkerBlue}
     },//bgColor
     {
-      {
-        (uint16_t)Gray,
-        (uint16_t)Gray
-      },
-      {
-        (uint16_t)White,
-        (uint16_t)White,
-        (uint16_t)White
-      }
+      {(uint16_t)Gray, (uint16_t)Gray},
+      {(uint16_t)White,(uint16_t)White,(uint16_t)White}
     },//fgColor
     {
-      {
-        (uint16_t)White,
-        (uint16_t)Black
-      },
-      {
-        (uint16_t)Yellow,
-        (uint16_t)Yellow,
-        (uint16_t)Red
-      }
+      {(uint16_t)White,(uint16_t)Black},
+      {(uint16_t)Yellow, (uint16_t)Yellow, (uint16_t)Red}
     },//valColor
     {
-      {
-        (uint16_t)White,
-        (uint16_t)Black
-      },
-      {
-        (uint16_t)White,
-        (uint16_t)Yellow,
-        (uint16_t)Yellow
-      }
+      {(uint16_t)White, (uint16_t)Black},
+      {(uint16_t)White, (uint16_t)Yellow, (uint16_t)Yellow}
     },//unitColor
     {
-      {
-        (uint16_t)White,
-        (uint16_t)Gray
-      },
-      {
-        (uint16_t)Black,
-        (uint16_t)Blue,
-        (uint16_t)White
-      }
+      {(uint16_t)White, (uint16_t)Gray},
+      {(uint16_t)Black, (uint16_t)Blue, (uint16_t)White}
     },//cursorColor
     {
-      {
-        (uint16_t)White,
-        (uint16_t)Yellow
-      },
-      {
-        (uint16_t)DarkerRed,
-        (uint16_t)White,
-        (uint16_t)White
-      }
+      {(uint16_t)White, (uint16_t)Yellow},
+      {(uint16_t)DarkerRed, (uint16_t)White, (uint16_t)White}
     },//titleColor
   };
-
-  #define MAX_DEPTH 5
-
   serialIn serial(Serial);
 
   // MENU_INPUTS(in,&serial);its single, no need to `chainStream`
@@ -304,12 +239,6 @@ Button2 buttonB = Button2(BUTTON_B_PIN);
   // define serial output device
   idx_t serialTops[MAX_DEPTH]={0};
   serialOut outSerial(Serial,serialTops);
-
-
-  #define GFX_WIDTH 240
-  #define GFX_HEIGHT 135
-  #define fontW 12
-  #define fontH 18
 
   constMEM panel panels[] MEMMODE = {{0, 0, GFX_WIDTH / fontW, GFX_HEIGHT / fontH}};
   navNode* navNodes[sizeof(panels) / sizeof(panel)]; //navNodes to store navigation status
