@@ -683,10 +683,6 @@ void loop() {
   } else {
     iotWebConf.doLoop();
   }
-  
-  // digitalWrite(LED, !onFlag);
-
-  buttonA.loop();
 
   if (deviceConnected) {
         txValue = read_message_queue.size();
