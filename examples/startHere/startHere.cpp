@@ -145,6 +145,7 @@ result myOtaOn() {
 
   preferences.begin("mesh-network", false);
   otaCtrl = preferences.putUInt("ota", HIGH);
+  preferences.putInt("nodeId", mesh.getNodeId());
   preferences.end();
   delay(500);
   mesh.stop();
@@ -451,6 +452,27 @@ class BLEWriteCallbacks : public BLECharacteristicCallbacks {
   void onRead(BLECharacteristic* pCharacteristic) {}
 };
 
+void decodeAPIMessage(String message) {
+  DynamicJsonDocument doc(1024);
+  DeserializationError error = deserializeJson(doc, message.c_str());
+  if (error) {
+    Serial.printf("JSON Format decode error, api call will ignore for now\n\n");
+    return;
+  }
+
+  const char* type = doc["type"];
+
+  if (strcmp("set_ota_mode", type) == 0) {
+    const char* status = doc["status"];
+
+    if (strcmp("true", status) == 0) {
+      myOtaOn();
+    } else if (strcmp("false", status) == 0) {
+      myOtaOff();
+    }
+  }
+}
+
 class BLEAPIWriteCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* pCharacteristic) {
     std::string rxValue = pCharacteristic->getValue();
@@ -461,9 +483,7 @@ class BLEAPIWriteCallbacks : public BLECharacteristicCallbacks {
       if (strcmp("{}", rxValue.c_str()) == 0) {
         Serial.println("empty message, ignore for now, need to fix later");
       }
-      // else {
-      //   decodeMessage(messageStr);
-      // }
+      decodeAPIMessage(messageStr);
     }
   }
 
@@ -500,7 +520,8 @@ void tapHandler(Button2& btn) {
       Serial.print("--------------------\n");
       Serial.print("Button A double \n\n");
       decodeMessage(
-          "{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": \"abcd\", "
+          "{\"type\": \"gm\",\"group_id\": \"public\",  \"message\": "
+          "\"abcd\", "
           " \"message_id\": \"test\"}");
       decodeMessage(
           "{\"type\": \"pm\",\"receiver_id\": 673516837,  \"message\": "
@@ -536,8 +557,6 @@ void tapButtonBHandler(Button2& btn) {
     case SINGLE_CLICK:
       Serial.print("--------------------\n");
       Serial.print("Button B single \n\n");
-      // decodeMessage("{\"type\": \"gm\",\"group_id\": \"public\", \"message\":
-      // \"abcd\"}");
       nav.doNav(downCmd);
       break;
     case DOUBLE_CLICK:
@@ -604,15 +623,17 @@ void setup() {
   buttonA.setTripleClickHandler(tapHandler);
 
   nav.idleTask = idle;     // point a function to be used when menu is suspended
-  nav.idleChanged = true;  // If you have a task that needs constant attention,
-                           // like drawing a clock on idle screen you can signal
-                           // that with idleChanged as true
+  nav.idleChanged = true;  // If you have a task that needs constant
+                           // attention, like drawing a clock on idle screen
+                           // you can signal that with idleChanged as true
 
 #endif
 
   mesh.setDebugMsgTypes(ERROR | DEBUG | CONNECTION | SYNC);
-  // mesh.setDebugMsgTypes(ERROR | DEBUG);  // set before init() so that you can
-  // see error messages
+  // mesh.setDebugMsgTypes(ERROR | DEBUG);  // set before init() so that you
+  // can see error messages
+
+  String node_id = "UART Service - ";
 
   if (otaCtrl == LOW) {
     mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler,
@@ -623,7 +644,6 @@ void setup() {
     mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
     mesh.onNodeDelayReceived(&delayReceivedCallback);
 
-    String node_id = "UART Service - ";
     node_id += mesh.getNodeId();
     String node_id_display = node_id + "\nVersion = " + String(VERSION);
     Serial.println(node_id_display);
@@ -656,52 +676,14 @@ void setup() {
     randomSeed(analogRead(A0));
 
     // Create the BLE Server
-    BLEDevice::init(node_id.c_str());
-
-    pServer = BLEDevice::createServer();
-    pServer->setCallbacks(new MyServerCallbacks());
-
-    // Create the BLE Service
-    BLEService* pService = pServer->createService(SERVICE_UUID);
-
-    // Create a BLE Characteristic
-    pTxCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_NOTIFY, BLECharacteristic::PROPERTY_NOTIFY);
-
-    pTxCharacteristic->addDescriptor(new BLE2902());
-
-    BLECharacteristic* pReadCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_READ, BLECharacteristic::PROPERTY_READ);
-
-    pReadCharacteristic->setCallbacks(new BLEReadCallbacks());
-
-    BLECharacteristic* pRxCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_RX, BLECharacteristic::PROPERTY_WRITE);
-
-    pRxCharacteristic->setCallbacks(new BLEWriteCallbacks());
-
-    BLECharacteristic* pAPIWriteCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID_API_WRITE, BLECharacteristic::PROPERTY_WRITE);
-
-    pAPIWriteCharacteristic->setCallbacks(new BLEAPIWriteCallbacks());
-
-    BLECharacteristic* pAPIRespondCharacteristic =
-        pService->createCharacteristic(CHARACTERISTIC_UUID_API_RESPOND,
-                                       BLECharacteristic::PROPERTY_READ);
-
-    pAPIRespondCharacteristic->setCallbacks(new BLEAPIRespondCallbacks());
-
-    // Start the service
-    pService->start();
-
-    // Start advertising
-    pServer->getAdvertising()->addServiceUUID(pService->getUUID());
-    pServer->getAdvertising()->start();
-    Serial.println("Waiting a client connection to notify...");
 
     display_need_update = true;
     nav.idleOn();
   } else {
+    preferences.begin("mesh-network", false);
+    node_id += preferences.getInt("nodeId", 0);
+    preferences.end();
+    // node_id += mesh.getNodeId();
     Serial.println("Start OTA mode");
 
     // -- Initializing the configuration.
@@ -714,6 +696,48 @@ void setup() {
     server.on("/config", [] { iotWebConf.handleConfig(); });
     server.onNotFound([]() { iotWebConf.handleNotFound(); });
   }
+
+  BLEDevice::init(node_id.c_str());
+
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+
+  // Create the BLE Service
+  BLEService* pService = pServer->createService(SERVICE_UUID);
+
+  // Create a BLE Characteristic
+  pTxCharacteristic = pService->createCharacteristic(
+      CHARACTERISTIC_UUID_NOTIFY, BLECharacteristic::PROPERTY_NOTIFY);
+
+  pTxCharacteristic->addDescriptor(new BLE2902());
+
+  BLECharacteristic* pReadCharacteristic = pService->createCharacteristic(
+      CHARACTERISTIC_UUID_READ, BLECharacteristic::PROPERTY_READ);
+
+  pReadCharacteristic->setCallbacks(new BLEReadCallbacks());
+
+  BLECharacteristic* pRxCharacteristic = pService->createCharacteristic(
+      CHARACTERISTIC_UUID_RX, BLECharacteristic::PROPERTY_WRITE);
+
+  pRxCharacteristic->setCallbacks(new BLEWriteCallbacks());
+
+  BLECharacteristic* pAPIWriteCharacteristic = pService->createCharacteristic(
+      CHARACTERISTIC_UUID_API_WRITE, BLECharacteristic::PROPERTY_WRITE);
+
+  pAPIWriteCharacteristic->setCallbacks(new BLEAPIWriteCallbacks());
+
+  BLECharacteristic* pAPIRespondCharacteristic = pService->createCharacteristic(
+      CHARACTERISTIC_UUID_API_RESPOND, BLECharacteristic::PROPERTY_READ);
+
+  pAPIRespondCharacteristic->setCallbacks(new BLEAPIRespondCallbacks());
+
+  // Start the service
+  pService->start();
+
+  // Start advertising
+  pServer->getAdvertising()->addServiceUUID(pService->getUUID());
+  pServer->getAdvertising()->start();
+  Serial.println("Waiting a client connection to notify...");
 }
 
 void loop() {
@@ -727,8 +751,8 @@ void loop() {
     txValue = read_message_queue.size();
     pTxCharacteristic->setValue(&txValue, 1);
     pTxCharacteristic->notify();
-    delay(10);  // bluetooth stack will go into congestion, if too many packets
-                // are sent
+    delay(10);  // bluetooth stack will go into congestion, if too many
+                // packets are sent
   }
 
   // disconnecting
@@ -923,7 +947,8 @@ void receivedCallback(uint32_t from, String& msg) {
                     msg.c_str());
     } else {
       Serial.printf(
-          "Private Message Receive but not me: from : [%u] to : [%u] msg= #### "
+          "Private Message Receive but not me: from : [%u] to : [%u] msg= "
+          "#### "
           "%s  ####\n",
           from, doc["receiver_id"], msg.c_str());
     }
