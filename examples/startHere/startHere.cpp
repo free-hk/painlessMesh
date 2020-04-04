@@ -40,7 +40,7 @@ IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
 
 #include "Button2.h"
 
-#define VERSION "1.2.16"
+#define VERSION "1.2.20"
 
 // --------------- Display -------------------------
 #include "TTGOTDisplay.h"
@@ -257,12 +257,15 @@ result idle(menuOut& o, idleEvent e) {
 
 BLEServer* pServer = NULL;
 BLECharacteristic* pTxCharacteristic;
+BLECharacteristic* pAPINotifyCharacteristic;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
 uint8_t txValue = 0;
+uint8_t apiUnreadValue = 0;
 
 std::deque<String> read_message_queue = {};
 std::deque<String> heartbeat_message_queue = {};
+std::deque<String> api_respond_queue = {};
 
 bool calc_delay = false;
 SimpleList<uint32_t> nodes;
@@ -367,8 +370,9 @@ void handleRoot() {
 #define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
 #define CHARACTERISTIC_UUID_NOTIFY "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
 #define CHARACTERISTIC_UUID_READ "6E400004-B5A3-F393-E0A9-E50E24DCCA9E"
-#define CHARACTERISTIC_UUID_API_WRITE "6E400005-B5A3-F393-E0A9-E50E24DCCA9E"
-#define CHARACTERISTIC_UUID_API_RESPOND "6E400006-B5A3-F393-E0A9-E50E24DCCA9E"
+#define CHARACTERISTIC_UUID_API_NOTIFY "6E400005-B5A3-F393-E0A9-E50E24DCCA9E"
+#define CHARACTERISTIC_UUID_API_WRITE "6E400006-B5A3-F393-E0A9-E50E24DCCA9E"
+#define CHARACTERISTIC_UUID_API_RESPOND "6E400007-B5A3-F393-E0A9-E50E24DCCA9E"
 class MyServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* pServer) { deviceConnected = true; };
 
@@ -466,10 +470,29 @@ void decodeAPIMessage(String message) {
     const char* status = doc["status"];
 
     if (strcmp("true", status) == 0) {
+      Serial.printf("Setup OTA mode on\n\n");
       myOtaOn();
     } else if (strcmp("false", status) == 0) {
+      Serial.printf("Setup OTA mode off\n\n");
       myOtaOff();
     }
+  } else if (strcmp("read_ota_mode", type) == 0) {
+    Serial.printf("Read OTA mode\n\n");
+    preferences.begin("mesh-network", false);
+    int otaCtrlStatus = preferences.getUInt("ota", LOW);
+    preferences.end();
+
+    if (otaCtrlStatus == HIGH) {
+      doc["result"] = "true";
+    } else {
+      doc["result"] = "false";
+    }
+    String str;
+    serializeJson(doc, str);
+    Serial.printf("Read OTA mode with respond");
+    Serial.printf(str.c_str());
+    Serial.printf("\n\n");
+    api_respond_queue.push_back(str);
   }
 }
 
@@ -494,16 +517,18 @@ class BLEAPIRespondCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* pCharacteristic) {}
 
   void onRead(BLECharacteristic* pCharacteristic) {
-    // if (read_message_queue.size() > 0) {
-    //   String message = read_message_queue.front();
-    //   pCharacteristic->setValue(message.c_str());
-    //   read_message_queue.pop_front();
-    //   display_need_update = true;
-    // } else {
-    //   // if no message in queue
-    //   String message = "{}";
-    //   pCharacteristic->setValue(message.c_str());
-    // }
+    Serial.print("-------BLEAPIRespondCallbacks onRead -------------\n");
+    if (api_respond_queue.size() > 0) {
+      Serial.print("-------api_respond_queue.size() > 0 -------------\n");
+      String message = api_respond_queue.front();
+      pCharacteristic->setValue(message.c_str());
+      api_respond_queue.pop_front();
+    } else {
+      Serial.print("-------api_respond_queue.size() == 0 -------------\n");
+      // if no message in queue
+      String message = "{}";
+      pCharacteristic->setValue(message.c_str());
+    }
   }
 };
 
@@ -721,6 +746,9 @@ void setup() {
 
   pRxCharacteristic->setCallbacks(new BLEWriteCallbacks());
 
+  pAPINotifyCharacteristic = pService->createCharacteristic(
+      CHARACTERISTIC_UUID_API_NOTIFY, BLECharacteristic::PROPERTY_NOTIFY);
+
   BLECharacteristic* pAPIWriteCharacteristic = pService->createCharacteristic(
       CHARACTERISTIC_UUID_API_WRITE, BLECharacteristic::PROPERTY_WRITE);
 
@@ -751,6 +779,11 @@ void loop() {
     txValue = read_message_queue.size();
     pTxCharacteristic->setValue(&txValue, 1);
     pTxCharacteristic->notify();
+
+    apiUnreadValue = api_respond_queue.size();
+    pAPINotifyCharacteristic->setValue(&apiUnreadValue, 1);
+    pAPINotifyCharacteristic->notify();
+
     delay(10);  // bluetooth stack will go into congestion, if too many
                 // packets are sent
   }
