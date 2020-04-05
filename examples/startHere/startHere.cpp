@@ -40,7 +40,7 @@ IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
 
 #include "Button2.h"
 
-#define VERSION "1.2.20"
+#define VERSION "1.3.1"
 
 // --------------- Display -------------------------
 #include "TTGOTDisplay.h"
@@ -490,6 +490,14 @@ void decodeAPIMessage(String message) {
     String str;
     serializeJson(doc, str);
     Serial.printf("Read OTA mode with respond");
+    Serial.printf(str.c_str());
+    Serial.printf("\n\n");
+    api_respond_queue.push_back(str);
+  } else if (strcmp("check_version", type) == 0) {
+    doc["result"] = String(VERSION);
+    String str;
+    serializeJson(doc, str);
+    Serial.printf("Read Hardware Version with respond - ");
     Serial.printf(str.c_str());
     Serial.printf("\n\n");
     api_respond_queue.push_back(str);
