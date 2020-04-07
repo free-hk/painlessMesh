@@ -31,6 +31,7 @@ IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
 
 // -------------- Mesh Network / BLE --------------
 #include <painlessMesh.h>
+painlessMesh mesh;
 
 #include <BLE2902.h>
 #include <BLEDevice.h>
@@ -49,6 +50,48 @@ IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
 #define NO_DISPLAY 0
 #define DISPLAY_MODE TTGOLED
 
+// --------------- OTA -------------------------
+int otaCtrl = LOW;  // OTA status
+
+result myOtaOn() {
+  Serial.println("Setup OTA Enable in myOtaOn");
+  otaCtrl = HIGH;
+
+  preferences.begin("mesh-network", false);
+  otaCtrl = preferences.putUInt("ota", HIGH);
+  preferences.putInt("nodeId", mesh.getNodeId());
+  preferences.end();
+  delay(500);
+  mesh.stop();
+  delay(500);
+  ESP.restart();
+
+  return proceed;
+}
+
+result myOtaOff() {
+  Serial.println("Setup OTA Disable in myOtaOff");
+  otaCtrl = LOW;
+
+  preferences.begin("mesh-network", false);
+  otaCtrl = preferences.putUInt("ota", LOW);
+  preferences.end();
+  delay(500);
+  mesh.stop();
+  delay(500);
+  ESP.restart();
+
+  return proceed;
+}
+
+void toggleOTA() {
+  if (otaCtrl == HIGH) {
+    myOtaOn();
+  } else {
+    myOtaOff();
+  }
+}
+
 // ----------------- WIFI Mesh Setting -------------------//
 // some gpio pin that is connected to an LED...
 // on my rig, this is 5, change to the right number of your LED.
@@ -65,8 +108,11 @@ Scheduler userScheduler;  // to control your personal task
 
 #if DISPLAY_MODE == OLED
 #define BUTTON_A_PIN 0
-#define BUTTON_A_PIN -1
+#define BUTTON_B_PIN -1
 #elif DISPLAY_MODE == TTGOLED
+#define BUTTON_A_PIN 0
+#define BUTTON_B_PIN 35
+#elif DISPLAY_MODE == NO_DISPLAY
 #define BUTTON_A_PIN 0
 #define BUTTON_B_PIN 35
 #endif
@@ -109,74 +155,6 @@ const int pwmLedChannelTFT = 0;
 char* constMEM hexDigit MEMMODE = "0123456789ABCDEF";
 char* constMEM hexNr[] MEMMODE = {"0", "x", hexDigit, hexDigit};
 char buf1[] = "0x11";
-
-painlessMesh mesh;
-// Prototypes
-void decodeMessage(String message);
-void sendGroupMessage(std::string group_id, std::string message,
-                      std::string message_id);
-void sendGroupMessage(String group_id, String message, String message_id);
-void sendPrivateMessage(uint32_t receiver_id, String message,
-                        String message_id);
-void sendPrivateMessage(uint32_t receiver_id, std::string message,
-                        std::string message_id);
-void sendPingMessage(uint32_t receiver_id);
-void sendPongMessage(uint32_t receiver_id);
-void sendBroadcastMessage(String message, bool includeSelf);
-void sendHeartbeat();
-void receivedCallback(uint32_t from, String& msg);
-void newConnectionCallback(uint32_t nodeId);
-void changedConnectionCallback();
-void nodeTimeAdjustedCallback(int32_t offset);
-void delayReceivedCallback(uint32_t from, int32_t delay);
-void loopTTGOLEDDisplay();
-
-// Handle OTA
-void handleRoot();
-
-Task taskSendHeartbeat(TASK_SECOND * 1, TASK_FOREVER,
-                       &sendHeartbeat);  // start with a one second interval
-
-int otaCtrl = LOW;  // Initial value for external connected led
-
-result myOtaOn() {
-  Serial.println("Setup OTA Enable in myOtaOn");
-  otaCtrl = HIGH;
-
-  preferences.begin("mesh-network", false);
-  otaCtrl = preferences.putUInt("ota", HIGH);
-  preferences.putInt("nodeId", mesh.getNodeId());
-  preferences.end();
-  delay(500);
-  mesh.stop();
-  delay(500);
-  ESP.restart();
-
-  return proceed;
-}
-
-result myOtaOff() {
-  Serial.println("Setup OTA Disable in myOtaOff");
-  otaCtrl = LOW;
-
-  preferences.begin("mesh-network", false);
-  otaCtrl = preferences.putUInt("ota", LOW);
-  preferences.end();
-  delay(500);
-  mesh.stop();
-  delay(500);
-  ESP.restart();
-
-  return proceed;
-}
-
-void toggleOTA() {
-  if (otaCtrl == HIGH) {
-    myOtaOn();
-  } else {
-    myOtaOff();
-  }
-}
 
 TOGGLE(otaCtrl, setOta, "OTA Status: ", toggleOTA,
        (Menu::eventMask)(updateEvent | enterEvent),
@@ -254,6 +232,32 @@ result idle(menuOut& o, idleEvent e) {
   return proceed;
 }
 #endif
+
+// Prototypes
+void decodeMessage(String message);
+void sendGroupMessage(std::string group_id, std::string message,
+                      std::string message_id);
+void sendGroupMessage(String group_id, String message, String message_id);
+void sendPrivateMessage(uint32_t receiver_id, String message,
+                        String message_id);
+void sendPrivateMessage(uint32_t receiver_id, std::string message,
+                        std::string message_id);
+void sendPingMessage(uint32_t receiver_id);
+void sendPongMessage(uint32_t receiver_id);
+void sendBroadcastMessage(String message, bool includeSelf);
+void sendHeartbeat();
+void receivedCallback(uint32_t from, String& msg);
+void newConnectionCallback(uint32_t nodeId);
+void changedConnectionCallback();
+void nodeTimeAdjustedCallback(int32_t offset);
+void delayReceivedCallback(uint32_t from, int32_t delay);
+void loopTTGOLEDDisplay();
+
+// Handle OTA
+void handleRoot();
+
+Task taskSendHeartbeat(TASK_SECOND * 1, TASK_FOREVER,
+                       &sendHeartbeat);  // start with a one second interval
 
 BLEServer* pServer = NULL;
 BLECharacteristic* pTxCharacteristic;
