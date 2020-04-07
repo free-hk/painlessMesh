@@ -43,12 +43,16 @@ painlessMesh mesh;
 
 #define VERSION "1.3.1"
 
+// --------------- Menu -------------------------
+#include "MeshMenu.h"
+using namespace Menu;
+
 // --------------- Display -------------------------
 #include "TTGOTDisplay.h"
 #define OLED 1
 #define TTGOLED 2
 #define NO_DISPLAY 0
-#define DISPLAY_MODE TTGOLED
+#define DISPLAY_MODE NO_DISPLAY
 
 // --------------- OTA -------------------------
 int otaCtrl = LOW;  // OTA status
@@ -109,9 +113,11 @@ Scheduler userScheduler;  // to control your personal task
 #if DISPLAY_MODE == OLED
 #define BUTTON_A_PIN 0
 #define BUTTON_B_PIN -1
+#define ENABLE_MENU
 #elif DISPLAY_MODE == TTGOLED
 #define BUTTON_A_PIN 0
 #define BUTTON_B_PIN 35
+#define ENABLE_MENU
 #elif DISPLAY_MODE == NO_DISPLAY
 #define BUTTON_A_PIN 0
 #define BUTTON_B_PIN 35
@@ -135,6 +141,9 @@ Button2 buttonB = Button2(BUTTON_B_PIN);
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RST);
 
 #elif DISPLAY_MODE == TTGOLED
+
+void loopTTGOLEDDisplay();
+
 int ledBacklight = 80;  // Initial TFT backlight intensity on a scale of 0 to
                         // 255. Initial value is 80.
 
@@ -145,8 +154,6 @@ char buff[512];
 int vref = 1100;
 
 // Menu
-#include "MeshMenu.h"
-using namespace Menu;
 
 // Setting PWM properties, do not change this!
 const int pwmFreq = 5000;
@@ -251,7 +258,6 @@ void newConnectionCallback(uint32_t nodeId);
 void changedConnectionCallback();
 void nodeTimeAdjustedCallback(int32_t offset);
 void delayReceivedCallback(uint32_t from, int32_t delay);
-void loopTTGOLEDDisplay();
 
 // Handle OTA
 void handleRoot();
@@ -344,6 +350,8 @@ void loopTTGOLEDDisplay() {
   }
 }
 
+#endif
+
 /**
  * Handle web requests to "/" path.
  */
@@ -366,8 +374,6 @@ void handleRoot() {
 
   server.send(200, "text/html", s);
 }
-
-#endif
 
 #define SERVICE_UUID \
   "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"  // UART service UUID
@@ -544,6 +550,7 @@ class BLEAPIRespondCallbacks : public BLECharacteristicCallbacks {
   }
 };
 
+#ifdef ENABLE_MENU
 void tapHandler(Button2& btn) {
   display_need_update = true;
   switch (btn.getClickType()) {
@@ -625,6 +632,7 @@ void tapButtonBHandler(Button2& btn) {
   Serial.print(btn.getNumberOfClicks());
   Serial.println(")");
 }
+#endif
 
 void setup() {
   Serial.begin(115200);
@@ -715,7 +723,9 @@ void setup() {
     // Create the BLE Server
 
     display_need_update = true;
+#ifdef ENABLE_MENU
     nav.idleOn();
+#endif
   } else {
     preferences.begin("mesh-network", false);
     node_id += preferences.getInt("nodeId", 0);
