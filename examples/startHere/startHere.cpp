@@ -41,7 +41,7 @@ painlessMesh mesh;
 
 #include "Button2.h"
 
-#define VERSION "1.3.1"
+#define VERSION "1.3.2"
 
 // --------------- Menu -------------------------
 #include "MeshMenu.h"
@@ -52,7 +52,26 @@ using namespace Menu;
 #define OLED 1
 #define TTGOLED 2
 #define NO_DISPLAY 0
-#define DISPLAY_MODE NO_DISPLAY
+#define DISPLAY_MODE OLED
+
+// Message Related
+void decodeMessage(String message);
+void sendGroupMessage(std::string group_id, std::string message,
+                      std::string message_id);
+void sendGroupMessage(String group_id, String message, String message_id);
+void sendPrivateMessage(uint32_t receiver_id, String message,
+                        String message_id);
+void sendPrivateMessage(uint32_t receiver_id, std::string message,
+                        std::string message_id);
+void sendPingMessage(uint32_t receiver_id);
+void sendPongMessage(uint32_t receiver_id);
+void sendBroadcastMessage(String message, bool includeSelf);
+void sendHeartbeat();
+void receivedCallback(uint32_t from, String& msg);
+void newConnectionCallback(uint32_t nodeId);
+void changedConnectionCallback();
+void nodeTimeAdjustedCallback(int32_t offset);
+void delayReceivedCallback(uint32_t from, int32_t delay);
 
 // --------------- OTA -------------------------
 int otaCtrl = LOW;  // OTA status
@@ -96,6 +115,16 @@ void toggleOTA() {
   }
 }
 
+// ----------------- Menu trigger Send Message -----------//
+result menuTriggerSendGroupMessage() {
+  Serial.println("Before Send Group Message");
+
+  sendGroupMessage(String("public"), String("Message from Menu"),
+                   String("dummy_2233445566"));
+  Serial.println("Prepare Send Group message done");
+  return proceed;
+}
+
 // ----------------- WIFI Mesh Setting -------------------//
 // some gpio pin that is connected to an LED...
 // on my rig, this is 5, change to the right number of your LED.
@@ -113,7 +142,6 @@ Scheduler userScheduler;  // to control your personal task
 #if DISPLAY_MODE == OLED
 #define BUTTON_A_PIN 0
 #define BUTTON_B_PIN -1
-#define ENABLE_MENU
 #elif DISPLAY_MODE == TTGOLED
 #define BUTTON_A_PIN 0
 #define BUTTON_B_PIN 35
@@ -183,9 +211,9 @@ MENU(mainMenu, "FreeHK - WiFi Mesh", doNothing, noEvent, wrapStyle,
            wrapStyle)  // Menu option to set the intensity of the backlight of
                        // the screen.
      ,
-     OP("Send Group Message", doNothing, noEvent),
-     OP("Send PM Message", doNothing, noEvent),
-     OP("Send Ping Message", doNothing, noEvent), SUBMENU(settingMenu),
+     OP("Send Group Message", menuTriggerSendGroupMessage, enterEvent),
+     //  OP("Send PM Message", doNothing, noEvent),
+     //  OP("Send Ping Message", doNothing, noEvent), SUBMENU(settingMenu),
      EXIT("<Home"));
 
 // define menu colors --------------------------------------------------------
@@ -239,25 +267,6 @@ result idle(menuOut& o, idleEvent e) {
   return proceed;
 }
 #endif
-
-// Prototypes
-void decodeMessage(String message);
-void sendGroupMessage(std::string group_id, std::string message,
-                      std::string message_id);
-void sendGroupMessage(String group_id, String message, String message_id);
-void sendPrivateMessage(uint32_t receiver_id, String message,
-                        String message_id);
-void sendPrivateMessage(uint32_t receiver_id, std::string message,
-                        std::string message_id);
-void sendPingMessage(uint32_t receiver_id);
-void sendPongMessage(uint32_t receiver_id);
-void sendBroadcastMessage(String message, bool includeSelf);
-void sendHeartbeat();
-void receivedCallback(uint32_t from, String& msg);
-void newConnectionCallback(uint32_t nodeId);
-void changedConnectionCallback();
-void nodeTimeAdjustedCallback(int32_t offset);
-void delayReceivedCallback(uint32_t from, int32_t delay);
 
 // Handle OTA
 void handleRoot();
@@ -824,6 +833,7 @@ void loop() {
   }
 
 #if DISPLAY_MODE == OLED
+  // Serial.printf(".");
   loopOLEDDisplay();
   buttonA.loop();
 #elif DISPLAY_MODE == TTGOLED
