@@ -41,7 +41,7 @@ painlessMesh mesh;
 
 #include "Button2.h"
 
-#define VERSION "1.3.3"
+#define VERSION "1.3.4"
 
 // --------------- Menu -------------------------
 #include "MeshMenu.h"
@@ -52,7 +52,12 @@ using namespace Menu;
 #define OLED 1
 #define TTGOLED 2
 #define NO_DISPLAY 0
-#define DISPLAY_MODE TTGOLED
+#define DISPLAY_MODE OLED
+
+// --------------- LoRa --------------------------
+#define ENABLE_LORA 1
+#define DISABLE_LORA 2
+#define LORA_MODE ENABLE_LORA
 
 // Message Related
 void decodeMessage(String message);
@@ -268,6 +273,25 @@ result idle(menuOut& o, idleEvent e) {
 }
 #endif
 
+#if LORA_MODE == ENABLE_LORA
+#include <LoRa.h>
+
+// define the pins used by the LoRa transceiver module
+#define SCK 5
+#define MISO 19
+#define MOSI 27
+#define SS 18
+#define RST 14
+#define DIO0 26
+
+// 433E6 for Asia
+// 866E6 for Europe
+// 915E6 for North America
+#define BAND 866E6
+bool isLoRaReady = false;
+
+#endif
+
 // Handle OTA
 void handleRoot();
 
@@ -342,6 +366,16 @@ void loopOLEDDisplay() {
 
   if (read_message_queue.size() > 0) {
     String message = read_message_queue.back();
+    display.setCursor(0, 30);
+    display.print(message);
+  }
+
+  if (!isLoRaReady) {
+    String message = "LoRa is not ready";
+    display.setCursor(0, 30);
+    display.print(message);
+  } else {
+    String message = "LoRa is ready";
     display.setCursor(0, 30);
     display.print(message);
   }
@@ -681,6 +715,21 @@ void setup() {
                            // attention, like drawing a clock on idle screen
                            // you can signal that with idleChanged as true
 
+#endif
+
+#if LORA_MODE == ENABLE_LORA
+  SPI.begin(SCK, MISO, MOSI, SS);
+  // setup LoRa transceiver module
+  LoRa.setPins(SS, RST, DIO0);
+
+  if (!LoRa.begin(BAND)) {
+    Serial.println("Starting LoRa failed!");
+    while (1)
+      ;
+  }
+
+  Serial.println("LoRa Initializing OK!");
+  isLoRaReady = true;
 #endif
 
   mesh.setDebugMsgTypes(ERROR | DEBUG | CONNECTION | SYNC);
