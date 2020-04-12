@@ -41,7 +41,7 @@ painlessMesh mesh;
 
 #include "Button2.h"
 
-#define VERSION "1.3.2"
+#define VERSION "1.3.3"
 
 // --------------- Menu -------------------------
 #include "MeshMenu.h"
@@ -52,7 +52,7 @@ using namespace Menu;
 #define OLED 1
 #define TTGOLED 2
 #define NO_DISPLAY 0
-#define DISPLAY_MODE OLED
+#define DISPLAY_MODE TTGOLED
 
 // Message Related
 void decodeMessage(String message);
