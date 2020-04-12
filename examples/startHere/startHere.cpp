@@ -31,6 +31,7 @@ IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
 
 // -------------- Mesh Network / BLE --------------
 #include <painlessMesh.h>
+painlessMesh mesh;
 
 #include <BLE2902.h>
 #include <BLEDevice.h>
@@ -40,7 +41,11 @@ IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
 
 #include "Button2.h"
 
-#define VERSION "1.3.1"
+#define VERSION "1.3.3"
+
+// --------------- Menu -------------------------
+#include "MeshMenu.h"
+using namespace Menu;
 
 // --------------- Display -------------------------
 #include "TTGOTDisplay.h"
@@ -49,69 +54,7 @@ IotWebConf iotWebConf(thingName, &dnsServer, &server, wifiInitialApPassword);
 #define NO_DISPLAY 0
 #define DISPLAY_MODE TTGOLED
 
-// ----------------- WIFI Mesh Setting -------------------//
-// some gpio pin that is connected to an LED...
-// on my rig, this is 5, change to the right number of your LED.
-#define LED 2  // GPIO number of connected LED, ON ESP-12 IS GPIO2
-
-#define BLINK_PERIOD 3000   // milliseconds until cycle repeat
-#define BLINK_DURATION 200  // milliseconds LED is on for
-
-#define MESH_SSID "FreeHK"
-#define MESH_PASSWORD "6q8DS9YQbr"
-#define MESH_PORT 5555
-
-Scheduler userScheduler;  // to control your personal task
-
-#if DISPLAY_MODE == OLED
-#define BUTTON_A_PIN 0
-#define BUTTON_A_PIN -1
-#elif DISPLAY_MODE == TTGOLED
-#define BUTTON_A_PIN 0
-#define BUTTON_B_PIN 35
-#endif
-
-Button2 buttonA = Button2(BUTTON_A_PIN);
-Button2 buttonB = Button2(BUTTON_B_PIN);
-
-#if DISPLAY_MODE == OLED
-// Libraries for OLED Display
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-#include <Wire.h>
-
-#define OLED_SDA 4
-#define OLED_SCL 15
-#define OLED_RST 16
-#define SCREEN_WIDTH 128  // OLED display width, in pixels
-#define SCREEN_HEIGHT 64  // OLED display height, in pixels
-
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RST);
-
-#elif DISPLAY_MODE == TTGOLED
-int ledBacklight = 80;  // Initial TFT backlight intensity on a scale of 0 to
-                        // 255. Initial value is 80.
-
-TTGOTDisplay ttgo;
-TFT_eSPI tft = ttgo.getTFT();
-
-char buff[512];
-int vref = 1100;
-
-// Menu
-#include "MeshMenu.h"
-using namespace Menu;
-
-// Setting PWM properties, do not change this!
-const int pwmFreq = 5000;
-const int pwmResolution = 8;
-const int pwmLedChannelTFT = 0;
-char* constMEM hexDigit MEMMODE = "0123456789ABCDEF";
-char* constMEM hexNr[] MEMMODE = {"0", "x", hexDigit, hexDigit};
-char buf1[] = "0x11";
-
-painlessMesh mesh;
-// Prototypes
+// Message Related
 void decodeMessage(String message);
 void sendGroupMessage(std::string group_id, std::string message,
                       std::string message_id);
@@ -129,15 +72,9 @@ void newConnectionCallback(uint32_t nodeId);
 void changedConnectionCallback();
 void nodeTimeAdjustedCallback(int32_t offset);
 void delayReceivedCallback(uint32_t from, int32_t delay);
-void loopTTGOLEDDisplay();
 
-// Handle OTA
-void handleRoot();
-
-Task taskSendHeartbeat(TASK_SECOND * 1, TASK_FOREVER,
-                       &sendHeartbeat);  // start with a one second interval
-
-int otaCtrl = LOW;  // Initial value for external connected led
+// --------------- OTA -------------------------
+int otaCtrl = LOW;  // OTA status
 
 result myOtaOn() {
   Serial.println("Setup OTA Enable in myOtaOn");
@@ -178,6 +115,82 @@ void toggleOTA() {
   }
 }
 
+// ----------------- Menu trigger Send Message -----------//
+result menuTriggerSendGroupMessage() {
+  Serial.println("Before Send Group Message");
+
+  sendGroupMessage(String("public"), String("Message from Menu"),
+                   String("dummy_2233445566"));
+  Serial.println("Prepare Send Group message done");
+  return proceed;
+}
+
+// ----------------- WIFI Mesh Setting -------------------//
+// some gpio pin that is connected to an LED...
+// on my rig, this is 5, change to the right number of your LED.
+#define LED 2  // GPIO number of connected LED, ON ESP-12 IS GPIO2
+
+#define BLINK_PERIOD 3000   // milliseconds until cycle repeat
+#define BLINK_DURATION 200  // milliseconds LED is on for
+
+#define MESH_SSID "FreeHK"
+#define MESH_PASSWORD "6q8DS9YQbr"
+#define MESH_PORT 5555
+
+Scheduler userScheduler;  // to control your personal task
+
+#if DISPLAY_MODE == OLED
+#define BUTTON_A_PIN 0
+#define BUTTON_B_PIN -1
+#elif DISPLAY_MODE == TTGOLED
+#define BUTTON_A_PIN 0
+#define BUTTON_B_PIN 35
+#define ENABLE_MENU
+#elif DISPLAY_MODE == NO_DISPLAY
+#define BUTTON_A_PIN 0
+#define BUTTON_B_PIN 35
+#endif
+
+Button2 buttonA = Button2(BUTTON_A_PIN);
+Button2 buttonB = Button2(BUTTON_B_PIN);
+
+#if DISPLAY_MODE == OLED
+// Libraries for OLED Display
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <Wire.h>
+
+#define OLED_SDA 4
+#define OLED_SCL 15
+#define OLED_RST 16
+#define SCREEN_WIDTH 128  // OLED display width, in pixels
+#define SCREEN_HEIGHT 64  // OLED display height, in pixels
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RST);
+
+#elif DISPLAY_MODE == TTGOLED
+
+void loopTTGOLEDDisplay();
+
+int ledBacklight = 80;  // Initial TFT backlight intensity on a scale of 0 to
+                        // 255. Initial value is 80.
+
+TTGOTDisplay ttgo;
+TFT_eSPI tft = ttgo.getTFT();
+
+char buff[512];
+int vref = 1100;
+
+// Menu
+
+// Setting PWM properties, do not change this!
+const int pwmFreq = 5000;
+const int pwmResolution = 8;
+const int pwmLedChannelTFT = 0;
+char* constMEM hexDigit MEMMODE = "0123456789ABCDEF";
+char* constMEM hexNr[] MEMMODE = {"0", "x", hexDigit, hexDigit};
+char buf1[] = "0x11";
+
 TOGGLE(otaCtrl, setOta, "OTA Status: ", toggleOTA,
        (Menu::eventMask)(updateEvent | enterEvent),
        noStyle  //,doExit,enterEvent,noStyle
@@ -198,9 +211,9 @@ MENU(mainMenu, "FreeHK - WiFi Mesh", doNothing, noEvent, wrapStyle,
            wrapStyle)  // Menu option to set the intensity of the backlight of
                        // the screen.
      ,
-     OP("Send Group Message", doNothing, noEvent),
-     OP("Send PM Message", doNothing, noEvent),
-     OP("Send Ping Message", doNothing, noEvent), SUBMENU(settingMenu),
+     OP("Send Group Message", menuTriggerSendGroupMessage, enterEvent),
+     //  OP("Send PM Message", doNothing, noEvent),
+     //  OP("Send Ping Message", doNothing, noEvent), SUBMENU(settingMenu),
      EXIT("<Home"));
 
 // define menu colors --------------------------------------------------------
@@ -254,6 +267,12 @@ result idle(menuOut& o, idleEvent e) {
   return proceed;
 }
 #endif
+
+// Handle OTA
+void handleRoot();
+
+Task taskSendHeartbeat(TASK_SECOND * 1, TASK_FOREVER,
+                       &sendHeartbeat);  // start with a one second interval
 
 BLEServer* pServer = NULL;
 BLECharacteristic* pTxCharacteristic;
@@ -340,6 +359,8 @@ void loopTTGOLEDDisplay() {
   }
 }
 
+#endif
+
 /**
  * Handle web requests to "/" path.
  */
@@ -362,8 +383,6 @@ void handleRoot() {
 
   server.send(200, "text/html", s);
 }
-
-#endif
 
 #define SERVICE_UUID \
   "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"  // UART service UUID
@@ -540,6 +559,7 @@ class BLEAPIRespondCallbacks : public BLECharacteristicCallbacks {
   }
 };
 
+#ifdef ENABLE_MENU
 void tapHandler(Button2& btn) {
   display_need_update = true;
   switch (btn.getClickType()) {
@@ -621,6 +641,7 @@ void tapButtonBHandler(Button2& btn) {
   Serial.print(btn.getNumberOfClicks());
   Serial.println(")");
 }
+#endif
 
 void setup() {
   Serial.begin(115200);
@@ -711,7 +732,9 @@ void setup() {
     // Create the BLE Server
 
     display_need_update = true;
+#ifdef ENABLE_MENU
     nav.idleOn();
+#endif
   } else {
     preferences.begin("mesh-network", false);
     node_id += preferences.getInt("nodeId", 0);
@@ -810,6 +833,7 @@ void loop() {
   }
 
 #if DISPLAY_MODE == OLED
+  // Serial.printf(".");
   loopOLEDDisplay();
   buttonA.loop();
 #elif DISPLAY_MODE == TTGOLED
