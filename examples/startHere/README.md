@@ -78,3 +78,15 @@ https://github.com/Mystereon/TTGO-T-DISPLAY-LIFE-/tree/master
 https://www.tindie.com/products/ttgo/lilygor-ttgo-t-display-esp32-wifibluetooth-module/
 
 
+# Development:
+
+### For Troubleshoot
+```
+open .pio/libdeps/esp32/TFT_eSPI_ID1559/User_Setup_Select.h
+
+// need comment this line
+// #include <User_Setup.h>           // Default setup is root library folder
+
+// need uncomment this line
+#include <User_Setups/Setup25_TTGO_T_Display.h>    // Setup file for ESP32 and TTGO T-Display ST7789V SPI bus TFT
+```
